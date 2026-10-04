@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { InputHTMLAttributes, ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { FOCUSABLE, focusItem, listKeys, radioGroupKeys } from "../a11y";
 import { Button } from "./Button";
 import { Icon } from "./Icons";
 
@@ -112,13 +113,14 @@ export function Segmented<T extends string>({
 	label: string;
 }) {
 	return (
-		<div className="segmented" role="radiogroup" aria-label={label}>
+		<div className="segmented" role="radiogroup" aria-label={label} onKeyDown={radioGroupKeys}>
 			{options.map((option) => (
 				<button
 					key={option.value}
 					type="button"
 					role="radio"
 					aria-checked={option.value === value}
+					tabIndex={option.value === value ? 0 : -1}
 					className={`segment${option.value === value ? " active" : ""}`}
 					onClick={() => onChange(option.value)}
 				>
@@ -144,13 +146,20 @@ export function Tabs<T extends string>({
 	onChange: (id: T) => void;
 }) {
 	return (
-		<div className="tabs" role="tablist">
+		<div
+			className="tabs"
+			role="tablist"
+			onKeyDown={(event) =>
+				listKeys(event, event.currentTarget, '[role="tab"]', { next: ["ArrowRight"], previous: ["ArrowLeft"] }, true)
+			}
+		>
 			{tabs.map((tab) => (
 				<button
 					key={tab.id}
 					type="button"
 					role="tab"
 					aria-selected={tab.id === active}
+					tabIndex={tab.id === active ? 0 : -1}
 					className={`tab${tab.id === active ? " active" : ""}`}
 					onClick={() => onChange(tab.id)}
 				>
@@ -185,6 +194,12 @@ export function Select<T extends string>({
 }) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
+	const listRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (open) {
+			focusItem(listRef.current, '[role="option"]', "selected");
+		}
+	}, [open]);
 	useEffect(() => {
 		if (!open) {
 			return;
@@ -197,6 +212,7 @@ export function Select<T extends string>({
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				setOpen(false);
+				ref.current?.querySelector<HTMLElement>(".select-trigger")?.focus();
 			}
 		};
 		document.addEventListener("mousedown", onPointer);
@@ -222,7 +238,19 @@ export function Select<T extends string>({
 				<Icon name="chevronDown" size={16} />
 			</button>
 			{open && (
-				<div className="menu" role="listbox">
+				<div
+					className="menu"
+					role="listbox"
+					ref={listRef}
+					aria-label={label}
+					onKeyDown={(event) => {
+						if (event.key === "Tab") {
+							setOpen(false);
+							return;
+						}
+						listKeys(event, listRef.current, '[role="option"]', { next: ["ArrowDown"], previous: ["ArrowUp"] });
+					}}
+				>
 					{options.map((option) => (
 						<button
 							key={option.value}
@@ -232,6 +260,7 @@ export function Select<T extends string>({
 							className={`menu-item${option.value === value ? " selected" : ""}`}
 							onClick={() => {
 								setOpen(false);
+								ref.current?.querySelector<HTMLElement>(".select-trigger")?.focus();
 								onChange(option.value);
 							}}
 						>
@@ -256,6 +285,8 @@ export function Modal({
 	children: ReactNode;
 	actions: ReactNode;
 }) {
+	const titleId = useId();
+	const dialogRef = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
@@ -265,17 +296,51 @@ export function Modal({
 		document.addEventListener("keydown", onKey);
 		return () => document.removeEventListener("keydown", onKey);
 	}, [onClose]);
+	useEffect(() => {
+		const previous = document.activeElement as HTMLElement | null;
+		const dialog = dialogRef.current;
+		if (dialog && !dialog.contains(document.activeElement)) {
+			const target =
+				dialog.querySelector<HTMLElement>(`.modal-body ${FOCUSABLE.split(", ").join(", .modal-body ")}`) ??
+				dialog.querySelector<HTMLElement>(".modal-actions button:not(:disabled)") ??
+				dialog.querySelector<HTMLElement>(FOCUSABLE) ??
+				dialog;
+			target.focus();
+		}
+		return () => previous?.focus?.();
+	}, []);
 	return createPortal(
 		<div className="modal-backdrop" onMouseDown={onClose}>
 			<div
 				className="modal"
 				role="dialog"
 				aria-modal="true"
-				aria-label={title}
+				aria-labelledby={titleId}
+				tabIndex={-1}
+				ref={dialogRef}
 				onMouseDown={(event) => event.stopPropagation()}
+				onKeyDown={(event) => {
+					if (event.key !== "Tab" || !dialogRef.current) {
+						return;
+					}
+					const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
+					if (focusable.length === 0) {
+						event.preventDefault();
+						return;
+					}
+					const first = focusable[0];
+					const last = focusable[focusable.length - 1];
+					if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+						event.preventDefault();
+						last.focus();
+					} else if (!event.shiftKey && document.activeElement === last) {
+						event.preventDefault();
+						first.focus();
+					}
+				}}
 			>
 				<div className="modal-head">
-					<h2>{title}</h2>
+					<h2 id={titleId}>{title}</h2>
 					<button type="button" className="icon-btn" aria-label="Close" onClick={onClose}>
 						<Icon name="x" size={20} />
 					</button>

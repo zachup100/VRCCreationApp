@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AppProvider, useApp } from "./AppContext";
 import { Sidebar } from "./components/Sidebar";
 import { Toasts } from "./components/Toasts";
@@ -12,8 +13,24 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ToolsPage } from "./pages/ToolsPage";
 
+const titles: Record<string, string> = {
+	projects: "Projects",
+	packages: "Packages",
+	presets: "Presets",
+	backups: "Backups",
+	new: "New Project",
+	manage: "Manage Project",
+	learn: "Learn",
+	tools: "Tools",
+	logs: "Logs",
+	settings: "Settings",
+};
+
 function Page() {
 	const { route } = useApp();
+	useEffect(() => {
+		document.title = `${titles[route.page] ?? "VRCreationApp"} - VRCreationApp`;
+	}, [route.page]);
 	switch (route.page) {
 		case "projects":
 			return <ProjectsPage />;
@@ -42,8 +59,11 @@ export function App() {
 	return (
 		<AppProvider>
 			<div className="app">
+				<a className="skip-link" href="#main-content">
+					Skip to content
+				</a>
 				<Sidebar />
-				<main className="content">
+				<main className="content" id="main-content" tabIndex={-1}>
 					<Page />
 				</main>
 				<Toasts />

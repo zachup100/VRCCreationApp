@@ -8,6 +8,7 @@ import { TextField } from "../components/Controls";
 import { DownloadStatus } from "../components/DownloadStatus";
 import { PresetPackages } from "../components/PresetPackages";
 import { Icon } from "../components/Icons";
+import { radioGroupKeys } from "../a11y";
 import { errorMessage } from "../format";
 import { loadLastLocation, saveLastLocation } from "../theme";
 
@@ -105,13 +106,14 @@ export function NewProjectPage() {
 			</header>
 
 			<h2 className="section-title">Select template</h2>
-			<div className="template-grid" role="radiogroup" aria-label="Project template">
+			<div className="template-grid" role="radiogroup" aria-label="Project template" onKeyDown={radioGroupKeys}>
 				{templates.map((item) => (
 					<button
 						key={item.id}
 						type="button"
 						role="radio"
 						aria-checked={template === item.id}
+						tabIndex={template === item.id ? 0 : -1}
 						disabled={creating}
 						className={`card template${template === item.id ? " selected" : ""}`}
 						onClick={() => setTemplate(item.id)}
@@ -138,12 +140,13 @@ export function NewProjectPage() {
 					</button>
 				</p>
 			) : (
-				<div className="preset-picker" role="radiogroup" aria-label="Preset">
+				<div className="preset-picker" role="radiogroup" aria-label="Preset" onKeyDown={radioGroupKeys}>
 					<div className={`preset-option${activePreset === undefined ? " selected" : ""}`}>
 						<button
 							type="button"
 							role="radio"
 							aria-checked={activePreset === undefined}
+							tabIndex={activePreset === undefined ? 0 : -1}
 							disabled={creating}
 							className="preset-option-main"
 							onClick={() => setPresetId("")}
@@ -158,6 +161,7 @@ export function NewProjectPage() {
 								type="button"
 								role="radio"
 								aria-checked={activePreset?.id === item.id}
+								tabIndex={activePreset?.id === item.id ? 0 : -1}
 								disabled={creating}
 								className="preset-option-main"
 								onClick={() => setPresetId(item.id)}

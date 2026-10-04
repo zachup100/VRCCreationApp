@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
+import { radioGroupKeys } from "../a11y";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
 import { setProjectLaunchArgs } from "../api";
@@ -46,13 +47,14 @@ function OpenWithModal({ project, onClose }: { project: ProjectInfo; onClose: ()
 					<p>
 						Choose the Unity editor to open <strong>{project.name}</strong> with.
 					</p>
-					<ul className="radio-list" role="radiogroup" aria-label="Unity editor">
+					<ul className="radio-list" role="radiogroup" aria-label="Unity editor" onKeyDown={radioGroupKeys}>
 						{editors.map((editor) => (
 							<li key={`${editor.version}-${editor.path}`}>
 								<button
 									type="button"
 									role="radio"
 									aria-checked={version === editor.version}
+									tabIndex={version === editor.version ? 0 : -1}
 									className={`radio-option${version === editor.version ? " selected" : ""}`}
 									onClick={() => setVersion(editor.version)}
 								>

@@ -2117,3 +2117,27 @@ code {
 .drop-card span {
 	color: var(--muted);
 }
+
+.skip-link {
+	position: fixed;
+	top: 8px;
+	left: 8px;
+	z-index: 100;
+	padding: 8px 14px;
+	background: var(--accent);
+	border-radius: 6px;
+	color: var(--accent-text);
+	transform: translateY(-200%);
+}
+
+.skip-link:focus {
+	transform: none;
+}
+
+.content:focus {
+	outline: none;
+}
+
+.modal:focus {
+	outline: none;
+}

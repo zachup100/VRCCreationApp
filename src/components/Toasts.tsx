@@ -6,7 +6,7 @@ export function Toasts() {
 	return (
 		<div className="toasts" aria-live="polite">
 			{toasts.map((toast) => (
-				<div key={toast.id} className={`toast toast-${toast.kind}`} role="status">
+				<div key={toast.id} className={`toast toast-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>
 					<Icon
 						name={toast.kind === "error" || toast.kind === "warning" ? "alert" : toast.kind === "success" ? "check" : "info"}
 						size={18}

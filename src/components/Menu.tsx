@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { focusItem, listKeys } from "../a11y";
 import { Button, IconButton } from "./Button";
 import type { ButtonVariant } from "./Button";
 import { Icon } from "./Icons";
@@ -13,7 +14,7 @@ export interface MenuItem {
 	onSelect: () => void;
 }
 
-function useDismiss(open: boolean, close: () => void) {
+function useDismiss(open: boolean, close: () => void, onEscape?: () => void) {
 	const ref = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		if (!open) {
@@ -26,7 +27,7 @@ function useDismiss(open: boolean, close: () => void) {
 		};
 		const onKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
-				close();
+				(onEscape ?? close)();
 			}
 		};
 		document.addEventListener("mousedown", onPointer);
@@ -35,13 +36,28 @@ function useDismiss(open: boolean, close: () => void) {
 			document.removeEventListener("mousedown", onPointer);
 			document.removeEventListener("keydown", onKey);
 		};
-	}, [open, close]);
+	}, [open, close, onEscape]);
 	return ref;
 }
 
-function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
+function MenuList({ items, close, closeAndFocus }: { items: MenuItem[]; close: () => void; closeAndFocus: () => void }) {
+	const ref = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		focusItem(ref.current, '[role="menuitem"]', "first");
+	}, []);
 	return (
-		<div className="menu" role="menu">
+		<div
+			className="menu"
+			role="menu"
+			ref={ref}
+			onKeyDown={(event) => {
+				if (event.key === "Tab") {
+					close();
+					return;
+				}
+				listKeys(event, ref.current, '[role="menuitem"]', { next: ["ArrowDown"], previous: ["ArrowUp"] });
+			}}
+		>
 			{items.map((item) => (
 				<button
 					key={item.label}
@@ -50,7 +66,7 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
 					disabled={item.disabled}
 					className={`menu-item${item.danger ? " danger" : ""}`}
 					onClick={() => {
-						close();
+						closeAndFocus();
 						item.onSelect();
 					}}
 				>
@@ -64,11 +80,15 @@ function MenuList({ items, close }: { items: MenuItem[]; close: () => void }) {
 
 export function MoreMenu({ items, label = "More actions" }: { items: MenuItem[]; label?: string }) {
 	const [open, setOpen] = useState(false);
-	const ref = useDismiss(open, () => setOpen(false));
+	const closeAndFocus = () => {
+		setOpen(false);
+		ref.current?.querySelector<HTMLElement>("button")?.focus();
+	};
+	const ref = useDismiss(open, () => setOpen(false), closeAndFocus);
 	return (
 		<div className="menu-anchor" ref={ref}>
-			<IconButton icon="more" label={label} onClick={() => setOpen((value) => !value)} />
-			{open && <MenuList items={items} close={() => setOpen(false)} />}
+			<IconButton icon="more" label={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)} />
+			{open && <MenuList items={items} close={() => setOpen(false)} closeAndFocus={closeAndFocus} />}
 		</div>
 	);
 }
@@ -83,7 +103,11 @@ interface SplitButtonProps {
 
 export function SplitButton({ variant = "primary", disabled, children, onClick, items }: SplitButtonProps) {
 	const [open, setOpen] = useState(false);
-	const ref = useDismiss(open, () => setOpen(false));
+	const closeAndFocus = () => {
+		setOpen(false);
+		ref.current?.querySelector<HTMLElement>(".split-toggle")?.focus();
+	};
+	const ref = useDismiss(open, () => setOpen(false), closeAndFocus);
 	return (
 		<div className="split menu-anchor" ref={ref}>
 			<Button variant={variant} className="split-main" disabled={disabled} onClick={onClick}>
@@ -100,7 +124,7 @@ export function SplitButton({ variant = "primary", disabled, children, onClick, 
 			>
 				<Icon name="chevronDown" size={16} />
 			</Button>
-			{open && <MenuList items={items} close={() => setOpen(false)} />}
+			{open && <MenuList items={items} close={() => setOpen(false)} closeAndFocus={closeAndFocus} />}
 		</div>
 	);
 }
