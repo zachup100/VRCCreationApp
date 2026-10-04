@@ -133,6 +133,33 @@ export function repositoryRemove(index: number, expectedId: string): Promise<voi
 	return invoke<void>("repository_remove", { index, expectedId });
 }
 
+export interface DeepLinkStatus {
+	supported: boolean;
+	registered: boolean;
+	otherHandler: boolean;
+}
+
+export interface IncomingRepository {
+	url: string;
+	headers: HeaderInput[];
+}
+
+export function deepLinkStatus(): Promise<DeepLinkStatus> {
+	return invoke<DeepLinkStatus>("deep_link_status");
+}
+
+export function deepLinkRegister(): Promise<DeepLinkStatus> {
+	return invoke<DeepLinkStatus>("deep_link_register");
+}
+
+export function deepLinkUnregister(): Promise<DeepLinkStatus> {
+	return invoke<DeepLinkStatus>("deep_link_unregister");
+}
+
+export function deepLinkTakeAddRepository(): Promise<IncomingRepository | null> {
+	return invoke<IncomingRepository | null>("deep_link_take_add_repository");
+}
+
 export function repositorySetHidden(id: string, hidden: boolean): Promise<void> {
 	return invoke<void>("repository_set_hidden", { id, hidden });
 }

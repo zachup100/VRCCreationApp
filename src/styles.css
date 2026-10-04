@@ -1969,6 +1969,16 @@ code {
 	background: var(--surface-hover);
 }
 
+.chip.link-state {
+	align-self: flex-start;
+	margin-top: 6px;
+}
+
+.chip.link-state.on {
+	color: var(--success);
+	border-color: var(--success);
+}
+
 .editor-row.custom {
 	grid-template-columns: 44px minmax(0, 1fr) auto 34px;
 }

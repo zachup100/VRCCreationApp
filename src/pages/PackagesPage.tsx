@@ -34,7 +34,7 @@ function PrereleaseSetting() {
 }
 
 function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
-	const { notify, repositoriesVersion } = useApp();
+	const { notify, repositoriesVersion, incomingRepository, clearIncomingRepository } = useApp();
 	const [info, setInfo] = useState<RepositoriesInfo | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [adding, setAdding] = useState(false);
@@ -138,6 +138,16 @@ function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
 					}}
 				/>
 			)}
+			{incomingRepository && !adding && !editing && (
+				<AddRepositoryModal
+					initial={incomingRepository}
+					onClose={clearIncomingRepository}
+					onAdded={(name) => {
+						notify("success", `Added repository ${name}`);
+						void load();
+					}}
+				/>
+			)}
 			{editing && (
 				<AddRepositoryModal
 					editing={editing}
@@ -173,6 +183,12 @@ function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
 
 export function PackagesPage() {
 	const [view, setView] = useState<"main" | "hidden">("main");
+	const { incomingRepository } = useApp();
+	useEffect(() => {
+		if (incomingRepository) {
+			setView("main");
+		}
+	}, [incomingRepository]);
 	if (view === "hidden") {
 		return <HiddenPackages onClose={() => setView("main")} />;
 	}

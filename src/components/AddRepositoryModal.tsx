@@ -25,16 +25,26 @@ export function AddRepositoryModal({
 	onClose,
 	onAdded,
 	editing,
+	initial,
 }: {
 	onClose: () => void;
 	onAdded: (name: string) => void;
 	editing?: CommunityRepository;
+	initial?: { url: string; headers: HeaderInput[] };
 }) {
-	const [url, setUrl] = useState(editing?.url ?? "");
+	const [url, setUrl] = useState(editing?.url ?? initial?.url ?? "");
 	const [state, setState] = useState<CheckState>({ phase: "idle" });
-	const [useHeaders, setUseHeaders] = useState(false);
-	const [headers, setHeaders] = useState<HeaderInput[]>([{ name: "", value: "" }]);
+	const [useHeaders, setUseHeaders] = useState((initial?.headers.length ?? 0) > 0);
+	const [headers, setHeaders] = useState<HeaderInput[]>(
+		initial && initial.headers.length > 0 ? initial.headers : [{ name: "", value: "" }],
+	);
 	const [adding, setAdding] = useState(false);
+
+	useEffect(() => {
+		if (initial) {
+			void check();
+		}
+	}, []);
 
 	useEffect(() => {
 		if (!editing) {

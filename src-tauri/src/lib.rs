@@ -1,6 +1,7 @@
 mod applog;
 mod args;
 mod commands;
+mod deeplink;
 mod download;
 mod editors;
 mod manifest;
@@ -19,6 +20,15 @@ pub fn run() {
         return;
     }
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            deeplink::handle_args(app, args);
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let folder = app.path().app_data_dir()?;
@@ -27,6 +37,8 @@ pub fn run() {
             app.manage(Mutex::new(prefs::Prefs::load(folder.clone())));
             app.manage(Mutex::new(presets::PresetStore::load(folder.clone())));
             app.manage(vpm::VpmContext::new(folder.join("vpm"))?);
+            app.manage(deeplink::PendingLinks::default());
+            deeplink::handle_args(app.handle(), std::env::args());
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -42,6 +54,10 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            deeplink::deep_link_status,
+            deeplink::deep_link_register,
+            deeplink::deep_link_unregister,
+            deeplink::deep_link_take_add_repository,
             commands::unity::list_unity_editors,
             commands::unity::add_custom_editor,
             commands::unity::remove_custom_editor,

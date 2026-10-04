@@ -8,6 +8,7 @@ First release. Windows 10 and 11 only.
 - Project list with search, sorting, list and grid views, favorites and a green Migrate button for legacy projects.
 - Create projects from bundled World and Avatar templates for Unity 2022.3.22f1 and 2019.4.31f1, with an optional preset of packages.
 - Add existing projects by folder picker or by dragging folders onto the window, import the project list from the VRChat Creator Companion, duplicate projects, and open them with any installed Unity version and custom launch arguments.
+- Delete a project from disk, behind a confirmation checkbox, from the Dangerous Actions menu. Add Unity editors that were not found automatically.
 - Back up projects to zip files, browse the app's own backups, and restore or delete them.
 - Migrate legacy SDK3 projects to the VPM package system and Unity 2019 projects to Unity 2022, with an optional backup first.
 
@@ -17,6 +18,8 @@ First release. Windows 10 and 11 only.
 - Resolve missing packages, reinstall a package, and clean up redundant entries in a project's package list.
 - Add community repositories (including ones that need authentication headers), show or hide repositories, hide individual packages, and import repositories and package folders from the Creator Companion.
 - Presets: saved package lists for World or Avatar projects that can be picked when creating a project.
+- Edit a community repository's URL and authentication headers.
+- Optional support for the Add to VCC buttons on websites: Settings has a Register Deep Link button that makes the app handle vcc:// links by opening the Add Repository window with the link prefilled. It is off until you register it.
 
 ### App
 - Dark, OLED, light and system themes.

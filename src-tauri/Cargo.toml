@@ -29,6 +29,8 @@ uuid = { version = "1", features = ["v4"] }
 indexmap = "2"
 tauri-plugin-dialog = "2"
 vrc-get-vpm = { git = "https://github.com/vrc-get/vrc-get", rev = "29bb9ea3cb38ece629dbb75999cc591fa5cad755", features = ["experimental-project-management", "experimental-unity-management"] }
+tauri-plugin-deep-link = "2.6.1"
+tauri-plugin-single-instance = "2.5.2"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.56"

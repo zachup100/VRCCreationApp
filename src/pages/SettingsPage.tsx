@@ -3,10 +3,11 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useApp } from "../AppContext";
-import { addCustomEditor, removeCustomEditor } from "../api";
+import { addCustomEditor, deepLinkRegister, deepLinkStatus, deepLinkUnregister, removeCustomEditor } from "../api";
+import type { DeepLinkStatus } from "../api";
 import { useActions } from "../actions";
 import { Button, IconButton } from "../components/Button";
-import { EmptyState, Select, Tabs } from "../components/Controls";
+import { ConfirmModal, EmptyState, Select, Tabs } from "../components/Controls";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
 import { LicensesModal } from "../components/LicensesModal";
 import type { Tab } from "../components/Controls";
@@ -171,6 +172,81 @@ function AboutSection() {
 	);
 }
 
+function DeepLinkRow() {
+	const { notify } = useApp();
+	const [status, setStatus] = useState<DeepLinkStatus | null>(null);
+	const [working, setWorking] = useState(false);
+	const [confirmTakeover, setConfirmTakeover] = useState(false);
+
+	useEffect(() => {
+		deepLinkStatus()
+			.then(setStatus)
+			.catch((error) => notify("error", errorMessage(error)));
+	}, [notify]);
+
+	const run = async (task: () => Promise<DeepLinkStatus>, message: string) => {
+		setWorking(true);
+		try {
+			setStatus(await task());
+			notify("success", message);
+		} catch (error) {
+			notify("error", errorMessage(error));
+		} finally {
+			setWorking(false);
+		}
+	};
+
+	const registered = status?.registered ?? false;
+	const description =
+		status && !status.supported
+			? "Opening vcc:// links is not available on this system."
+			: "Let the Add to VCC buttons on websites open this app. It is off until you register it, and only one app on your computer can handle vcc:// links at a time. Links only open the Add Repository window, so nothing is added until you confirm.";
+
+	return (
+		<SettingRow
+			icon="external"
+			title="Add Repository Links"
+			description={description}
+			extra={
+				status?.supported ? (
+					<span className={`chip link-state${registered ? " on" : ""}`}>
+						{registered ? "Registered to this app" : status.otherHandler ? "Handled by another app" : "Not registered"}
+					</span>
+				) : undefined
+			}
+		>
+			<Button
+				icon="external"
+				disabled={!status?.supported || working}
+				onClick={() => {
+					if (registered) {
+						void run(deepLinkUnregister, "Stopped handling vcc:// links");
+					} else if (status?.otherHandler) {
+						setConfirmTakeover(true);
+					} else {
+						void run(deepLinkRegister, "This app now handles vcc:// links");
+					}
+				}}
+			>
+				{registered ? "Unregister Deep Link" : "Register Deep Link"}
+			</Button>
+			{confirmTakeover && (
+				<ConfirmModal
+					title="Register Deep Link"
+					confirmLabel="Register Deep Link"
+					onClose={() => setConfirmTakeover(false)}
+					onConfirm={() => void run(deepLinkRegister, "This app now handles vcc:// links")}
+				>
+					<p>
+						Another app, probably the VRChat Creator Companion, currently handles vcc:// links. Registering makes this app handle them instead.
+						Unregistering later removes the link handler completely, so the other app has to register itself again.
+					</p>
+				</ConfirmModal>
+			)}
+		</SettingRow>
+	);
+}
+
 function GeneralTab() {
 	const { editors, editorsLoading, editorsError, refreshEditors, projects, notify } = useApp();
 	const actions = useActions();
@@ -320,6 +396,7 @@ function GeneralTab() {
 					<SettingRow icon="package" title="Packages" description="Copy community repositories, including saved authentication headers, and local package folders.">
 						<ImportPackagesButton />
 					</SettingRow>
+					<DeepLinkRow />
 				</div>
 			</section>
 			<AboutSection />
