@@ -21,6 +21,7 @@ pub struct PackageRow {
     source: &'static str,
     repository: Option<String>,
     has_update: bool,
+    requires_sdk: Option<&'static str>,
 }
 
 #[derive(Serialize)]
@@ -71,6 +72,26 @@ pub(crate) fn redundant_dependencies(project: &UnityProject) -> Vec<String> {
         .collect();
     names.sort();
     names
+}
+
+pub(crate) fn sdk_requirement<'a>(name: &str, dependencies: impl IntoIterator<Item = &'a str>) -> Option<&'static str> {
+    match name {
+        "com.vrchat.avatars" => Some("avatar"),
+        "com.vrchat.worlds" => Some("world"),
+        _ => {
+            let mut avatars = false;
+            let mut worlds = false;
+            for dependency in dependencies {
+                avatars |= dependency == "com.vrchat.avatars";
+                worlds |= dependency == "com.vrchat.worlds";
+            }
+            match (avatars, worlds) {
+                (true, false) => Some("avatar"),
+                (false, true) => Some("world"),
+                _ => None,
+            }
+        }
+    }
 }
 
 pub(crate) fn hidden_ids(prefs: &Mutex<Prefs>) -> Result<HashSet<String>, String> {
@@ -187,9 +208,14 @@ pub async fn project_packages(
                 return None;
             }
 
-            let latest = collection
-                .find_package_by_name(&name, selector)
-                .map(|info| info.version().clone());
+            let latest_info = collection.find_package_by_name(&name, selector);
+            let requires_sdk = match latest_info {
+                Some(info) => sdk_requirement(&name, info.vpm_dependencies().keys().map(|key| key.as_ref())),
+                None => project
+                    .get_installed_package(&name)
+                    .and_then(|manifest| sdk_requirement(&name, manifest.vpm_dependencies().keys().map(|key| key.as_ref()))),
+            };
+            let latest = latest_info.map(|info| info.version().clone());
             let has_update = match (&latest, installed_entry) {
                 (Some(latest), Some((current, _))) => latest > current,
                 _ => false,
@@ -218,6 +244,7 @@ pub async fn project_packages(
                 source,
                 repository,
                 has_update,
+                requires_sdk,
             })
         })
         .collect();
@@ -269,5 +296,24 @@ mod tests {
         assert_eq!(accumulator.classify(), ("curated", None));
         accumulator.official = true;
         assert_eq!(accumulator.classify(), ("official", None));
+    }
+
+    #[test]
+    fn the_sdk_packages_belong_to_their_own_kind() {
+        assert_eq!(sdk_requirement("com.vrchat.avatars", []), Some("avatar"));
+        assert_eq!(sdk_requirement("com.vrchat.worlds", []), Some("world"));
+    }
+
+    #[test]
+    fn a_package_needing_one_sdk_is_tied_to_it() {
+        assert_eq!(sdk_requirement("tool", ["com.vrchat.base", "com.vrchat.avatars"]), Some("avatar"));
+        assert_eq!(sdk_requirement("tool", ["com.vrchat.worlds"]), Some("world"));
+    }
+
+    #[test]
+    fn packages_needing_neither_or_both_have_no_restriction() {
+        assert_eq!(sdk_requirement("tool", ["com.vrchat.base"]), None);
+        assert_eq!(sdk_requirement("tool", []), None);
+        assert_eq!(sdk_requirement("tool", ["com.vrchat.avatars", "com.vrchat.worlds"]), None);
     }
 }

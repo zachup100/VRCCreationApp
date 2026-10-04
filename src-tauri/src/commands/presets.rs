@@ -1,4 +1,4 @@
-use crate::commands::packages::{gather, hidden_ids};
+use crate::commands::packages::{gather, hidden_ids, sdk_requirement};
 use crate::prefs::Prefs;
 use crate::presets::{Preset, PresetPackage, PresetStore};
 use crate::store::now_millis;
@@ -139,22 +139,15 @@ pub async fn available_packages(
             versions.sort();
             versions.dedup();
             versions.reverse();
-            let requires_sdk = match name.as_str() {
-                "com.vrchat.avatars" => Some("avatar"),
-                "com.vrchat.worlds" => Some("world"),
-                _ => collection
+            let requires_sdk = sdk_requirement(
+                &name,
+                collection
                     .find_package_by_name(&name, VersionSelector::latest_for(None, allow_prerelease))
-                    .and_then(|info| {
-                        let deps = info.vpm_dependencies();
-                        if deps.contains_key("com.vrchat.avatars") {
-                            Some("avatar")
-                        } else if deps.contains_key("com.vrchat.worlds") {
-                            Some("world")
-                        } else {
-                            None
-                        }
-                    }),
-            };
+                    .map(|info| info.vpm_dependencies().keys().map(|key| key.to_string()).collect::<Vec<String>>())
+                    .unwrap_or_default()
+                    .iter()
+                    .map(String::as_str),
+            );
             AvailablePackage {
                 requires_sdk,
                 display_name: accumulator.display_name.unwrap_or_else(|| name.clone()),

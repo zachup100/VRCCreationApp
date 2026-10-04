@@ -127,6 +127,7 @@ export interface PackageRow {
 	source: PackageSource;
 	repository: string | null;
 	hasUpdate: boolean;
+	requiresSdk: PresetKind | null;
 }
 
 export interface ProjectPackages {

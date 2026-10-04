@@ -30,6 +30,7 @@ function PackageTable({
 	staged,
 	onStage,
 	onReinstall,
+	projectKind,
 }: {
 	rows: PackageRow[];
 	query: string;
@@ -38,6 +39,7 @@ function PackageTable({
 	staged: Staged;
 	onStage: (name: string, change: StagedChange | null) => void;
 	onReinstall: (name: string) => void;
+	projectKind: "world" | "avatar" | null;
 }) {
 	const [targets, setTargets] = useState<Record<string, string>>({});
 	const visible = useMemo(() => {
@@ -73,7 +75,12 @@ function PackageTable({
 						<div className="pkg-name">
 							<Icon name="package" size={22} />
 							<div>
-								<strong title={row.name}>{row.displayName}</strong>
+								<strong title={row.name}>
+									{row.displayName}
+									{projectKind !== null && row.requiresSdk !== null && row.requiresSdk !== projectKind && (
+										<span className="tag warn-tag">{row.requiresSdk === "avatar" ? "Avatar SDK only" : "World SDK only"}</span>
+									)}
+								</strong>
 								{row.displayName !== row.name && <span className="path">{row.name}</span>}
 							</div>
 						</div>
@@ -436,6 +443,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 						staged={staged}
 						onStage={stageChange}
 						onReinstall={(name) => void plan({ installs: [], removes: [], reinstall: [name] })}
+						projectKind={project.category.endsWith("world") ? "world" : project.category.endsWith("avatar") ? "avatar" : null}
 					/>
 				)}
 			</div>
