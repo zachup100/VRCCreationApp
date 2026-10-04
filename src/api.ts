@@ -59,3 +59,49 @@ export function setProjectFavorite(path: string, favorite: boolean): Promise<voi
 export function importFromVcc(): Promise<ImportResult> {
 	return invoke<ImportResult>("import_from_vcc");
 }
+
+export interface BuiltinRepository {
+	id: string;
+	name: string;
+	hidden: boolean;
+}
+
+export interface CommunityRepository {
+	index: number;
+	id: string;
+	url: string | null;
+	name: string;
+	author: string | null;
+	hidden: boolean;
+}
+
+export interface RepositoriesInfo {
+	builtin: BuiltinRepository[];
+	community: CommunityRepository[];
+}
+
+export type RepositoryPreview =
+	| { status: "badUrl" }
+	| { status: "duplicated"; byUrl: boolean; name: string }
+	| { status: "downloadError"; message: string }
+	| { status: "success"; id: string; url: string; name: string; author: string | null; packages: string[] };
+
+export function repositoriesInfo(): Promise<RepositoriesInfo> {
+	return invoke<RepositoriesInfo>("repositories_info");
+}
+
+export function repositoryPreview(url: string): Promise<RepositoryPreview> {
+	return invoke<RepositoryPreview>("repository_preview", { url });
+}
+
+export function repositoryAdd(url: string): Promise<void> {
+	return invoke<void>("repository_add", { url });
+}
+
+export function repositoryRemove(index: number, expectedId: string): Promise<void> {
+	return invoke<void>("repository_remove", { index, expectedId });
+}
+
+export function repositorySetHidden(id: string, hidden: boolean): Promise<void> {
+	return invoke<void>("repository_set_hidden", { id, hidden });
+}

@@ -1,0 +1,339 @@
+use crate::prefs::Prefs;
+use crate::vpm::VpmContext;
+use indexmap::IndexMap;
+use serde::Serialize;
+use serde_json::{Map, Value};
+use std::sync::Mutex;
+use tauri::State;
+use vrc_get_vpm::environment::{add_remote_repo, Settings};
+use vrc_get_vpm::repository::RemoteRepository;
+use vrc_get_vpm::VersionSelector;
+
+const OFFICIAL_ID: &str = "com.vrchat.repos.official";
+const CURATED_ID: &str = "com.vrchat.repos.curated";
+const LOCAL_USER_ID: &str = "local-user-packages";
+const OFFICIAL_URL: &str = "https://packages.vrchat.com/official?download";
+const CURATED_URL: &str = "https://packages.vrchat.com/curated?download";
+const MAX_REPOSITORY_BYTES: usize = 64 * 1024 * 1024;
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuiltinRepository {
+    id: &'static str,
+    name: &'static str,
+    hidden: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommunityRepository {
+    index: usize,
+    id: String,
+    url: Option<String>,
+    name: String,
+    author: Option<String>,
+    hidden: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepositoriesInfo {
+    builtin: Vec<BuiltinRepository>,
+    community: Vec<CommunityRepository>,
+}
+
+#[derive(Serialize)]
+#[serde(
+    tag = "status",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum RepositoryPreview {
+    BadUrl,
+    Duplicated { by_url: bool, name: String },
+    DownloadError { message: String },
+    Success {
+        id: String,
+        url: String,
+        name: String,
+        author: Option<String>,
+        packages: Vec<String>,
+    },
+}
+
+fn author_of(map: &Map<String, Value>) -> Option<String> {
+    match map.get("author")? {
+        Value::String(name) if !name.is_empty() => Some(name.clone()),
+        Value::Object(object) => object
+            .get("name")
+            .and_then(Value::as_str)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+fn cached_author(path: &std::path::Path) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    match serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')).ok()? {
+        Value::Object(map) => author_of(&map),
+        _ => None,
+    }
+}
+
+fn parse_http_url(url: &str) -> Option<reqwest::Url> {
+    let parsed: reqwest::Url = url.trim().parse().ok()?;
+    match parsed.scheme() {
+        "http" | "https" if parsed.host_str().is_some() => Some(parsed),
+        _ => None,
+    }
+}
+
+fn lock_prefs<'a>(
+    state: &'a State<'_, Mutex<Prefs>>,
+) -> Result<std::sync::MutexGuard<'a, Prefs>, String> {
+    state
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())
+}
+
+#[tauri::command]
+pub async fn repositories_info(
+    vpm: State<'_, VpmContext>,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<RepositoriesInfo, String> {
+    let settings = {
+        let _guard = vpm.lock.lock().await;
+        Settings::load(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not read repository settings: {error}"))?
+    };
+    let prefs = lock_prefs(&prefs)?;
+
+    let builtin = vec![
+        BuiltinRepository {
+            id: OFFICIAL_ID,
+            name: "Official",
+            hidden: prefs.is_hidden(OFFICIAL_ID),
+        },
+        BuiltinRepository {
+            id: CURATED_ID,
+            name: "Curated",
+            hidden: prefs.is_hidden(CURATED_ID),
+        },
+        BuiltinRepository {
+            id: LOCAL_USER_ID,
+            name: "Local User Packages",
+            hidden: prefs.is_hidden(LOCAL_USER_ID),
+        },
+    ];
+
+    let community = settings
+        .get_user_repos()
+        .iter()
+        .enumerate()
+        .filter(|(_, repo)| repo.id().is_some() || repo.url().is_some())
+        .map(|(index, repo)| {
+            let id = repo
+                .id()
+                .or(repo.url().map(|url| url.as_str()))
+                .unwrap_or_default()
+                .to_string();
+            CommunityRepository {
+                index,
+                name: repo.name().unwrap_or(&id).to_string(),
+                url: repo.url().map(|url| url.to_string()),
+                author: cached_author(repo.local_path()),
+                hidden: prefs.is_hidden(&id),
+                id,
+            }
+        })
+        .collect();
+
+    Ok(RepositoriesInfo { builtin, community })
+}
+
+#[tauri::command]
+pub async fn repository_preview(
+    url: String,
+    vpm: State<'_, VpmContext>,
+) -> Result<RepositoryPreview, String> {
+    let Some(parsed) = parse_http_url(&url) else {
+        return Ok(RepositoryPreview::BadUrl);
+    };
+
+    let (known_urls, known_ids) = {
+        let _guard = vpm.lock.lock().await;
+        let settings = Settings::load(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not read repository settings: {error}"))?;
+        let mut urls: Vec<(String, String)> = vec![
+            (OFFICIAL_URL.to_string(), "Official".to_string()),
+            (CURATED_URL.to_string(), "Curated".to_string()),
+        ];
+        let mut ids: Vec<(String, String)> = vec![
+            (OFFICIAL_ID.to_string(), "Official".to_string()),
+            (CURATED_ID.to_string(), "Curated".to_string()),
+        ];
+        for repo in settings.get_user_repos() {
+            let label = repo
+                .name()
+                .or(repo.id())
+                .unwrap_or("Existing repository")
+                .to_string();
+            if let Some(url) = repo.url() {
+                urls.push((url.to_string(), label.clone()));
+            }
+            if let Some(id) = repo.id() {
+                ids.push((id.to_string(), label));
+            }
+        }
+        (urls, ids)
+    };
+
+    if let Some((_, name)) = known_urls.iter().find(|(known, _)| known == parsed.as_str()) {
+        return Ok(RepositoryPreview::Duplicated {
+            by_url: true,
+            name: name.clone(),
+        });
+    }
+
+    let response = match vpm.http.get(parsed.clone()).send().await {
+        Ok(response) => response,
+        Err(error) => {
+            return Ok(RepositoryPreview::DownloadError {
+                message: error.to_string(),
+            })
+        }
+    };
+    if !response.status().is_success() {
+        return Ok(RepositoryPreview::DownloadError {
+            message: format!("The server responded with {}", response.status()),
+        });
+    }
+    let bytes = match response.bytes().await {
+        Ok(bytes) if bytes.len() <= MAX_REPOSITORY_BYTES => bytes,
+        Ok(_) => {
+            return Ok(RepositoryPreview::DownloadError {
+                message: "The repository listing is too large".to_string(),
+            })
+        }
+        Err(error) => {
+            return Ok(RepositoryPreview::DownloadError {
+                message: error.to_string(),
+            })
+        }
+    };
+
+    let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
+    let map = match serde_json::from_slice::<Value>(body) {
+        Ok(Value::Object(map)) => map,
+        _ => {
+            return Ok(RepositoryPreview::DownloadError {
+                message: "The URL did not return a valid VPM repository listing".to_string(),
+            })
+        }
+    };
+    let author = author_of(&map);
+    let repository = match RemoteRepository::parse(map) {
+        Ok(repository) => repository,
+        Err(error) => {
+            return Ok(RepositoryPreview::DownloadError {
+                message: format!("The repository listing is invalid: {error}"),
+            })
+        }
+    };
+
+    let url_text = repository
+        .url()
+        .map(|url| url.to_string())
+        .unwrap_or_else(|| parsed.to_string());
+    let id = repository
+        .id()
+        .map(str::to_string)
+        .unwrap_or_else(|| url_text.clone());
+
+    if let Some((_, name)) = known_ids.iter().find(|(known, _)| *known == id) {
+        return Ok(RepositoryPreview::Duplicated {
+            by_url: false,
+            name: name.clone(),
+        });
+    }
+
+    let mut packages: Vec<String> = repository
+        .get_packages()
+        .filter_map(|package| package.get_latest(VersionSelector::latest_for(None, true)))
+        .map(|manifest| {
+            manifest
+                .display_name()
+                .unwrap_or_else(|| manifest.name())
+                .to_string()
+        })
+        .collect();
+    packages.sort_by_key(|name| name.to_lowercase());
+
+    Ok(RepositoryPreview::Success {
+        name: repository.name().unwrap_or(&id).to_string(),
+        id,
+        url: url_text,
+        author,
+        packages,
+    })
+}
+
+#[tauri::command]
+pub async fn repository_add(url: String, vpm: State<'_, VpmContext>) -> Result<(), String> {
+    let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
+    let _guard = vpm.lock.lock().await;
+    let mut settings = Settings::load(&vpm.io)
+        .await
+        .map_err(|error| format!("Could not read repository settings: {error}"))?;
+    add_remote_repo(&mut settings, parsed, None, IndexMap::new(), &vpm.io, &vpm.http)
+        .await
+        .map_err(|error| format!("Could not add the repository: {error}"))?;
+    settings
+        .save(&vpm.io)
+        .await
+        .map_err(|error| format!("Could not save repository settings: {error}"))
+}
+
+#[tauri::command]
+pub async fn repository_remove(
+    index: usize,
+    expected_id: String,
+    vpm: State<'_, VpmContext>,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<(), String> {
+    {
+        let _guard = vpm.lock.lock().await;
+        let mut settings = Settings::load(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not read repository settings: {error}"))?;
+        let actual = settings
+            .get_user_repos()
+            .get(index)
+            .map(|repo| repo.id().or(repo.url().map(|url| url.as_str())).map(str::to_string));
+        if actual.flatten().as_deref() != Some(expected_id.as_str()) {
+            return Err("The repository list changed. Refresh and try again.".to_string());
+        }
+        settings.remove_repo_at_index(index);
+        settings
+            .save(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not save repository settings: {error}"))?;
+    }
+    let mut prefs = lock_prefs(&prefs)?;
+    prefs.set_hidden(&expected_id, false);
+    prefs.save().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn repository_set_hidden(
+    id: String,
+    hidden: bool,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<(), String> {
+    let mut prefs = lock_prefs(&prefs)?;
+    prefs.set_hidden(&id, hidden);
+    prefs.save().map_err(|error| error.to_string())
+}

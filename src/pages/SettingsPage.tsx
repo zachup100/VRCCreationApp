@@ -1,11 +1,15 @@
 import { getVersion } from "@tauri-apps/api/app";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
-import { Button } from "../components/Button";
-import { Checkbox, EmptyState, Select, Tabs } from "../components/Controls";
+import { repositoriesInfo, repositoryRemove, repositorySetHidden } from "../api";
+import type { CommunityRepository, RepositoriesInfo } from "../api";
+import { AddRepositoryModal } from "../components/AddRepositoryModal";
+import { Button, IconButton } from "../components/Button";
+import { Checkbox, ConfirmModal, EmptyState, Select, Tabs } from "../components/Controls";
 import type { Tab } from "../components/Controls";
 import { Icon } from "../components/Icons";
+import { errorMessage } from "../format";
 import type { ThemeChoice, ViewMode } from "../theme";
 
 type TabId = "general" | "packages" | "appearance";
@@ -80,39 +84,116 @@ function GeneralTab() {
 }
 
 function PackagesTab() {
+	const { notify } = useApp();
+	const [info, setInfo] = useState<RepositoriesInfo | null>(null);
+	const [loadError, setLoadError] = useState<string | null>(null);
+	const [adding, setAdding] = useState(false);
+	const [pendingRemove, setPendingRemove] = useState<CommunityRepository | null>(null);
+
+	const load = useCallback(async () => {
+		try {
+			setInfo(await repositoriesInfo());
+			setLoadError(null);
+		} catch (error) {
+			setLoadError(errorMessage(error));
+		}
+	}, []);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	const guard = async (task: () => Promise<void>) => {
+		try {
+			await task();
+		} catch (error) {
+			notify("error", errorMessage(error));
+		}
+		await load();
+	};
+
+	const toggle = (id: string, visible: boolean) => guard(() => repositorySetHidden(id, !visible));
+
 	return (
 		<section className="settings-section">
 			<div className="section-head">
 				<div>
 					<h2>Installed Repositories</h2>
 					<p className="muted">
-						Official and curated repositories are included by default. Adding community repositories is coming soon.
+						Official and curated repositories are included by default. You can add community repositories with Add Repository.
 					</p>
 				</div>
-				<Button icon="plusCircle" variant="ghost" disabled title="Not available yet">
+				<Button icon="plusCircle" variant="ghost" onClick={() => setAdding(true)}>
 					Add Repository
 				</Button>
 			</div>
+			{loadError && <p className="field-error">{loadError}</p>}
 			<div className="card table">
 				<div className="table-head repos">
 					<span className="th">Name</span>
 					<span className="th">Author</span>
 					<span className="th">URL</span>
+					<span className="th" />
 				</div>
 				<div className="group-label">Built-In Repositories</div>
-				{["Official", "Curated", "Local User Packages"].map((name) => (
-					<div key={name} className="row repos">
+				{(info?.builtin ?? []).map((repo) => (
+					<div key={repo.id} className="row repos">
 						<span className="repo-name">
-							<Checkbox checked disabled label={name} />
-							{name}
+							<Checkbox checked={!repo.hidden} label={`Show ${repo.name} packages`} onChange={(value) => void toggle(repo.id, value)} />
+							{repo.name}
 						</span>
+						<span />
 						<span />
 						<span />
 					</div>
 				))}
 				<div className="group-label">Community Repositories</div>
-				<div className="repo-empty muted">No community repositories added.</div>
+				{info && info.community.length === 0 && <div className="repo-empty muted">No community repositories added.</div>}
+				{(info?.community ?? []).map((repo) => (
+					<div key={repo.id} className="row repos">
+						<span className="repo-name">
+							<Checkbox checked={!repo.hidden} label={`Show ${repo.name} packages`} onChange={(value) => void toggle(repo.id, value)} />
+							<span className="ellipsis" title={repo.name}>
+								{repo.name}
+							</span>
+						</span>
+						<span className="ellipsis" title={repo.author ?? ""}>
+							{repo.author ?? ""}
+						</span>
+						<span className="ellipsis muted" title={repo.url ?? ""}>
+							{repo.url ?? ""}
+						</span>
+						<IconButton icon="minusCircle" label={`Remove ${repo.name}`} className="remove" onClick={() => setPendingRemove(repo)} />
+					</div>
+				))}
 			</div>
+			{adding && (
+				<AddRepositoryModal
+					onClose={() => setAdding(false)}
+					onAdded={(name) => {
+						notify("success", `Added repository ${name}`);
+						void load();
+					}}
+				/>
+			)}
+			{pendingRemove && (
+				<ConfirmModal
+					title="Remove Repository"
+					confirmLabel="Remove Repository"
+					danger
+					onClose={() => setPendingRemove(null)}
+					onConfirm={() =>
+						void guard(async () => {
+							await repositoryRemove(pendingRemove.index, pendingRemove.id);
+							notify("info", `Removed repository ${pendingRemove.name}`);
+						})
+					}
+				>
+					<p>
+						Remove <strong>{pendingRemove.name}</strong>? Packages already installed in your projects stay installed.
+					</p>
+				</ConfirmModal>
+			)}
 		</section>
 	);
 }
