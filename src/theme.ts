@@ -1,4 +1,4 @@
-export type ThemeChoice = "dark" | "light" | "system";
+export type ThemeChoice = "dark" | "oled" | "light" | "system";
 export type ViewMode = "list" | "grid";
 
 const THEME_KEY = "theme";
@@ -22,7 +22,7 @@ function write(key: string, value: string) {
 
 export function loadTheme(): ThemeChoice {
 	const stored = read(THEME_KEY);
-	return stored === "dark" || stored === "light" || stored === "system" ? stored : "dark";
+	return stored === "dark" || stored === "oled" || stored === "light" || stored === "system" ? stored : "dark";
 }
 
 export function saveTheme(choice: ThemeChoice) {

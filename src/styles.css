@@ -21,6 +21,18 @@
 	--art-avatar: linear-gradient(135deg, #2a1d4a, #6a2f78 55%, #1c2a52);
 }
 
+:root[data-theme="oled"] {
+	color-scheme: dark;
+	--bg-sidebar: #000000;
+	--bg: #000000;
+	--surface: #0c0c0d;
+	--surface-raised: #151516;
+	--surface-hover: #1b1b1d;
+	--border: #232326;
+	--border-strong: #58585e;
+	--shadow: 0 12px 40px rgba(0, 0, 0, 0.85);
+}
+
 :root[data-theme="light"] {
 	color-scheme: light;
 	--bg-sidebar: #efeff1;

@@ -232,7 +232,7 @@ function AppearanceTab() {
 				<div className="setting">
 					<div>
 						<strong>Theme</strong>
-						<p className="muted">Choose a dark or light look, or follow your system.</p>
+						<p className="muted">Choose a dark, OLED black or light look, or follow your system.</p>
 					</div>
 					<Select<ThemeChoice>
 						label="Theme"
@@ -240,6 +240,7 @@ function AppearanceTab() {
 						onChange={setTheme}
 						options={[
 							{ value: "dark", label: "Dark" },
+							{ value: "oled", label: "OLED" },
 							{ value: "light", label: "Light" },
 							{ value: "system", label: "Follow system" },
 						]}
