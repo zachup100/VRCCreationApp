@@ -9,7 +9,7 @@ import { ReviewChangesModal } from "../components/ReviewChangesModal";
 import { Icon } from "../components/Icons";
 import { SplitButton } from "../components/Menu";
 import { useProjectDialogs } from "../components/ProjectDialogs";
-import { TypeBadge, VersionChip, hasEditor } from "../components/ProjectParts";
+import { TypeBadge, VersionChip, canMigrateTo2022, hasEditor, isLegacy } from "../components/ProjectParts";
 import { errorMessage, timeAgo } from "../format";
 
 type RepoFilter = "all" | PackageSource;
@@ -271,6 +271,13 @@ export function ManageProjectPage({ path }: { path: string }) {
 					items={[
 						{ label: "Open With...", icon: "unity", disabled: !project.exists, onSelect: () => dialogs.openWith(project) },
 						{ label: "Launch Options...", icon: "settings", onSelect: () => dialogs.launchOptions(project) },
+						...(isLegacy(project)
+							? [{ label: "Migrate Project...", icon: "upload" as const, disabled: !project.exists, onSelect: () => dialogs.task(project, "vpm") }]
+							: []),
+						...(canMigrateTo2022(project)
+							? [{ label: "Migrate to Unity 2022...", icon: "upload" as const, disabled: !project.exists, onSelect: () => dialogs.task(project, "unity2022") }]
+							: []),
+						{ label: "Back Up Project...", icon: "download", disabled: !project.exists, onSelect: () => dialogs.task(project, "backup") },
 						{ label: "Open Folder", icon: "folderOpen", disabled: !project.exists, onSelect: () => void actions.openFolder(project) },
 						{ label: "Copy Path", icon: "copy", onSelect: () => void actions.copyPath(project) },
 					]}
@@ -282,6 +289,14 @@ export function ManageProjectPage({ path }: { path: string }) {
 				<strong>Located At:</strong> <span className="path-inline">{project.path}</span>
 				{!project.exists && <span className="tag danger">missing</span>}
 			</p>
+			{isLegacy(project) && project.exists && (
+				<div className="notice warn">
+					<span>This is a legacy project that uses the old VRChat SDK. Migrate it to the VPM package system to manage packages here.</span>
+					<Button variant="success" icon="upload" disabled={working} onClick={() => dialogs.task(project, "vpm")}>
+						Migrate Project
+					</Button>
+				</div>
+			)}
 			{!canOpen && (
 				<div className="notice warn">
 					<span>

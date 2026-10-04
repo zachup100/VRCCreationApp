@@ -1,5 +1,6 @@
 pub mod changes;
 pub mod create;
+pub mod migrate;
 pub mod packages;
 pub mod projects;
 pub mod repositories;

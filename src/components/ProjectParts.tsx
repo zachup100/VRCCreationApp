@@ -41,3 +41,11 @@ export function VersionChip({ project, editors, loaded }: { project: ProjectInfo
 		</span>
 	);
 }
+
+export function isLegacy(project: ProjectInfo): boolean {
+	return project.category === "legacy-avatar" || project.category === "legacy-world";
+}
+
+export function canMigrateTo2022(project: ProjectInfo): boolean {
+	return !isLegacy(project) && (project.unityVersion?.startsWith("2019.") ?? false);
+}

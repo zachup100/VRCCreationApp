@@ -120,6 +120,20 @@ impl ProjectStore {
         }
     }
 
+    pub fn update_info(&mut self, path: &str, unity_version: Option<String>, category: String) {
+        let key = path_key(path);
+        if let Some(project) = self
+            .data
+            .projects
+            .iter_mut()
+            .find(|project| path_key(&project.path) == key)
+        {
+            project.unity_version = unity_version;
+            project.category = category;
+            project.last_modified = now_millis();
+        }
+    }
+
     pub fn insert(&mut self, project: StoredProject) -> bool {
         if self.contains(&project.path) {
             return false;

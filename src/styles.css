@@ -1535,3 +1535,71 @@ code {
 	color: var(--warn);
 	margin-top: 10px;
 }
+
+.check-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 12px;
+	color: var(--text);
+}
+
+.modal-note {
+	margin-top: 10px;
+	font-size: 14px;
+}
+
+.task-steps {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.task-step {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	color: var(--muted);
+}
+
+.task-step.current {
+	color: var(--text);
+	font-weight: 600;
+}
+
+.task-step.done {
+	color: var(--success);
+}
+
+.progress {
+	height: 8px;
+	background: var(--surface);
+	border-radius: 4px;
+	overflow: hidden;
+}
+
+.progress-fill {
+	height: 100%;
+	background: var(--accent);
+	transition: width 0.15s;
+}
+
+.task-log {
+	max-height: 200px;
+	margin: 0;
+	padding: 10px 12px;
+	overflow: auto;
+	background: var(--bg);
+	border-radius: 8px;
+	font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--muted);
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.ok {
+	color: var(--success);
+	vertical-align: -4px;
+}

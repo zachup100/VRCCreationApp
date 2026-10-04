@@ -8,7 +8,7 @@ import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
 import { useProjectDialogs } from "../components/ProjectDialogs";
 import type { MenuItem } from "../components/Menu";
-import { TypeBadge, VersionChip, hasEditor } from "../components/ProjectParts";
+import { TypeBadge, VersionChip, canMigrateTo2022, hasEditor, isLegacy } from "../components/ProjectParts";
 import { timeAgo } from "../format";
 
 type SortKey = "favorite" | "name" | "type" | "unity" | "modified";
@@ -71,8 +71,13 @@ export function ProjectsPage() {
 	};
 
 	const menuFor = (project: ProjectInfo): MenuItem[] => [
+		...(isLegacy(project) ? [{ label: "Manage Project", icon: "package" as const, disabled: !project.exists, onSelect: () => navigate({ page: "manage", path: project.path }) }] : []),
 		{ label: "Open With...", icon: "unity", disabled: !project.exists, onSelect: () => dialogs.openWith(project) },
 		{ label: "Launch Options...", icon: "settings", onSelect: () => dialogs.launchOptions(project) },
+		...(canMigrateTo2022(project)
+			? [{ label: "Migrate to Unity 2022...", icon: "upload" as const, disabled: !project.exists, onSelect: () => dialogs.task(project, "unity2022") }]
+			: []),
+		{ label: "Back Up Project...", icon: "download", disabled: !project.exists, onSelect: () => dialogs.task(project, "backup") },
 		{ label: "Open Folder", icon: "folderOpen", disabled: !project.exists, onSelect: () => void actions.openFolder(project) },
 		{ label: "Copy Path", icon: "copy", onSelect: () => void actions.copyPath(project) },
 		{
@@ -96,9 +101,15 @@ export function ProjectsPage() {
 				>
 					Open Project
 				</Button>
-				<Button disabled={!project.exists} onClick={() => navigate({ page: "manage", path: project.path })}>
-					Manage Project
-				</Button>
+				{isLegacy(project) ? (
+					<Button variant="success" icon="upload" disabled={!project.exists} onClick={() => dialogs.task(project, "vpm")}>
+						Migrate Project
+					</Button>
+				) : (
+					<Button disabled={!project.exists} onClick={() => navigate({ page: "manage", path: project.path })}>
+						Manage Project
+					</Button>
+				)}
 				<MoreMenu items={menuFor(project)} />
 			</>
 		);

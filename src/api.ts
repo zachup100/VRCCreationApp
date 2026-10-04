@@ -216,3 +216,28 @@ export function getSettings(): Promise<AppSettings> {
 export function updateSettings(patch: SettingsPatch): Promise<AppSettings> {
 	return invoke<AppSettings>("update_settings", { patch });
 }
+
+export interface BackupResult {
+	path: string;
+	files: number;
+	bytes: number;
+}
+
+export type MigrationKind = "vpm" | "unity2022";
+
+export type TaskProgress =
+	| { kind: "phase"; name: "backup" | "packages" | "unity" }
+	| { kind: "backup"; done: number; total: number }
+	| { kind: "unityLog"; line: string };
+
+export function backupProject(path: string): Promise<BackupResult> {
+	return invoke<BackupResult>("backup_project", { path });
+}
+
+export function migrateProject(path: string, kind: MigrationKind, backup: boolean): Promise<BackupResult | null> {
+	return invoke<BackupResult | null>("migrate_project", { path, kind, backup });
+}
+
+export function openBackupFolder(): Promise<void> {
+	return invoke<void>("open_backup_folder");
+}
