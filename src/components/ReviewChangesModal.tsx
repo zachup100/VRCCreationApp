@@ -88,21 +88,13 @@ export function ReviewChangesModal({
 			)}
 
 			{hasDependents && (
-				<>
-					<div className="notice warn change-block">
-						<Icon name="alert" size={18} />
-						<div>
-							<strong>Create a backup before continuing.</strong>
-							<p>
-								Other packages depend on what you are removing, so they will be removed as well. This can break your project and cannot be undone without a backup.
-							</p>
-						</div>
+				<div className="notice warn change-block">
+					<Icon name="alert" size={18} />
+					<div>
+						<strong>Create a backup before continuing.</strong>
+						<p>Other packages depend on what you are removing, so they will be removed as well. This can break your project and cannot be undone without a backup.</p>
 					</div>
-					<label className="check-row">
-						<Checkbox checked={acknowledged} onChange={setAcknowledged} disabled={busy} label="Acknowledge the side effects" />
-						<span>I acknowledge that removing these packages may have unintended side effects.</span>
-					</label>
-				</>
+				</div>
 			)}
 
 			{summary.installs.length > 0 && (
@@ -152,6 +144,12 @@ export function ReviewChangesModal({
 								</li>
 							))}
 					</ul>
+					{hasDependents && (
+						<label className="check-row">
+							<Checkbox checked={acknowledged} onChange={setAcknowledged} disabled={busy} label="Acknowledge the side effects" />
+							<span>I acknowledge that removing these packages may have unintended side effects.</span>
+						</label>
+					)}
 				</>
 			)}
 
