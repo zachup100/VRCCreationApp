@@ -10,12 +10,12 @@ const top: { page: Page; label: string; icon: IconName }[] = [
 	{ page: "packages", label: "Packages", icon: "package" },
 	{ page: "presets", label: "Presets", icon: "presets" },
 	{ page: "backups", label: "Backups", icon: "backups" },
-	{ page: "learn", label: "Learn", icon: "learn" },
-	{ page: "tools", label: "Tools", icon: "tools" },
 ];
 
 const bottom: { page: Page; label: string; icon: IconName }[] = [
+	{ page: "learn", label: "Learn", icon: "learn" },
 	{ page: "logs", label: "Logs", icon: "logs" },
+	{ page: "tools", label: "Tools", icon: "tools" },
 	{ page: "settings", label: "Settings", icon: "settings" },
 ];
 
