@@ -36,6 +36,8 @@ pub struct ChangeRequest {
     resolve: bool,
     #[serde(default)]
     reinstall: Vec<String>,
+    #[serde(default)]
+    acknowledge_dependents: bool,
 }
 
 #[derive(Serialize)]
@@ -210,15 +212,53 @@ async fn plan_installs<'env>(
         .map_err(|error| error.to_string())
 }
 
+pub(crate) fn expand_with_dependents(requested: &[String], locked: &[(String, Vec<String>)]) -> Vec<String> {
+    let mut selected: Vec<String> = Vec::new();
+    for name in requested {
+        if !selected.contains(name) {
+            selected.push(name.clone());
+        }
+    }
+    loop {
+        let mut added = false;
+        for (name, dependencies) in locked {
+            if !selected.contains(name) && dependencies.iter().any(|dependency| selected.contains(dependency)) {
+                selected.push(name.clone());
+                added = true;
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+    selected
+}
+
 async fn plan_removes(
     project: &UnityProject,
     removes: &[String],
-) -> Result<PendingProjectChanges<'static>, String> {
-    let names: Vec<&str> = removes.iter().map(String::as_str).collect();
-    project
+) -> Result<(PendingProjectChanges<'static>, Vec<String>), String> {
+    let locked: Vec<(String, Vec<String>)> = project
+        .locked_packages()
+        .map(|package| {
+            (
+                package.name().to_string(),
+                package.dependencies().keys().map(|key| key.to_string()).collect(),
+            )
+        })
+        .collect();
+    let expanded = expand_with_dependents(removes, &locked);
+    let extra: Vec<String> = expanded
+        .iter()
+        .filter(|name| !removes.contains(name))
+        .cloned()
+        .collect();
+    let names: Vec<&str> = expanded.iter().map(String::as_str).collect();
+    let changes = project
         .remove_request(&names)
         .await
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok((changes, extra))
 }
 
 impl ChangeRequest {
@@ -334,8 +374,14 @@ pub async fn project_plan_changes(
     let remove_summary = if request.removes.is_empty() {
         None
     } else {
-        let changes = plan_removes(&project, &request.removes).await?;
-        Some(summarize(&project, &changes))
+        let (changes, extra) = plan_removes(&project, &request.removes).await?;
+        let mut summary = summarize(&project, &changes);
+        for removal in &mut summary.removes {
+            if extra.contains(&removal.name) {
+                removal.reason = "dependent";
+            }
+        }
+        Some(summary)
     };
     let install_summary = if request.installs.is_empty() {
         None
@@ -388,7 +434,10 @@ pub async fn project_apply_changes(
 
     if !request.removes.is_empty() {
         let mut project = load_project(&path, &store).await?;
-        let changes = plan_removes(&project, &request.removes).await?;
+        let (changes, extra) = plan_removes(&project, &request.removes).await?;
+        if !extra.is_empty() && !request.acknowledge_dependents {
+            return Err("Removing these packages also removes others that depend on them. Confirm the warning and try again.".to_string());
+        }
         if !changes.conflicts().is_empty() {
             return Err("These changes have conflicts and cannot be applied".to_string());
         }
@@ -492,5 +541,52 @@ mod tests {
             describe(&request(r#"{"installs":[{"name":"a","version":"1.0.0"}],"removes":["b","c"]}"#)),
             "removed b, c; installed a 1.0.0"
         );
+    }
+
+    fn locked(entries: &[(&str, &[&str])]) -> Vec<(String, Vec<String>)> {
+        entries
+            .iter()
+            .map(|(name, deps)| (name.to_string(), deps.iter().map(|dep| dep.to_string()).collect()))
+            .collect()
+    }
+
+    fn names(items: &[&str]) -> Vec<String> {
+        items.iter().map(|item| item.to_string()).collect()
+    }
+
+    #[test]
+    fn removing_a_package_nobody_needs_adds_nothing() {
+        let installed = locked(&[("a", &[]), ("b", &["a"]), ("c", &[])]);
+        assert_eq!(expand_with_dependents(&names(&["c"]), &installed), names(&["c"]));
+    }
+
+    #[test]
+    fn direct_dependents_are_added() {
+        let installed = locked(&[("sdk", &[]), ("tool", &["sdk"]), ("emulator", &["sdk"]), ("other", &[])]);
+        let mut result = expand_with_dependents(&names(&["sdk"]), &installed);
+        assert_eq!(result.remove(0), "sdk");
+        result.sort();
+        assert_eq!(result, names(&["emulator", "tool"]));
+    }
+
+    #[test]
+    fn dependents_of_dependents_are_added() {
+        let installed = locked(&[("base", &[]), ("sdk", &["base"]), ("tool", &["sdk"]), ("plugin", &["tool"]), ("free", &[])]);
+        let mut result = expand_with_dependents(&names(&["base"]), &installed);
+        result.sort();
+        assert_eq!(result, names(&["base", "plugin", "sdk", "tool"]));
+    }
+
+    #[test]
+    fn requested_names_are_kept_once_and_cycles_terminate() {
+        let installed = locked(&[("a", &["b"]), ("b", &["a"])]);
+        let result = expand_with_dependents(&names(&["a", "a"]), &installed);
+        assert_eq!(result, names(&["a", "b"]));
+    }
+
+    #[test]
+    fn requested_dependents_are_not_reported_twice() {
+        let installed = locked(&[("sdk", &[]), ("tool", &["sdk"])]);
+        assert_eq!(expand_with_dependents(&names(&["sdk", "tool"]), &installed), names(&["sdk", "tool"]));
     }
 }

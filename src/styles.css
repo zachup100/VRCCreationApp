@@ -2141,3 +2141,8 @@ code {
 .modal:focus {
 	outline: none;
 }
+
+.change-block p {
+	margin-top: 4px;
+	color: var(--muted);
+}

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ChangeSummary } from "../api";
 import { Button } from "./Button";
 import { Icon } from "./Icons";
-import { Modal } from "./Controls";
+import { Checkbox, Modal } from "./Controls";
 import { DownloadStatus } from "./DownloadStatus";
 
 const installLabels: Record<ChangeSummary["installs"][number]["kind"], string> = {
@@ -14,6 +14,7 @@ const installLabels: Record<ChangeSummary["installs"][number]["kind"], string> =
 
 const removeLabels: Record<ChangeSummary["removes"][number]["reason"], string> = {
 	requested: "Remove",
+	dependent: "Needs a removed package",
 	legacy: "Replaced legacy package",
 	unused: "No longer needed",
 };
@@ -26,10 +27,12 @@ export function ReviewChangesModal({
 }: {
 	summary: ChangeSummary;
 	busy: boolean;
-	onApply: () => void;
+	onApply: (acknowledged: boolean) => void;
 	onClose: () => void;
 }) {
 	const [showLegacy, setShowLegacy] = useState(false);
+	const [acknowledged, setAcknowledged] = useState(false);
+	const hasDependents = summary.removes.some((item) => item.reason === "dependent");
 	const blocked = summary.conflicts.length > 0;
 	const legacyCount = summary.legacyFiles.length + summary.legacyFolders.length;
 	const empty = summary.installs.length === 0 && summary.removes.length === 0;
@@ -43,7 +46,7 @@ export function ReviewChangesModal({
 					<Button onClick={onClose} disabled={busy}>
 						Cancel
 					</Button>
-					<Button variant="primary" disabled={busy || blocked || empty} onClick={onApply}>
+					<Button variant="primary" disabled={busy || blocked || empty || (hasDependents && !acknowledged)} onClick={() => onApply(acknowledged)}>
 						{busy ? "Applying..." : "Apply Changes"}
 					</Button>
 				</>
@@ -69,6 +72,24 @@ export function ReviewChangesModal({
 						</ul>
 					</div>
 				</div>
+			)}
+
+			{hasDependents && (
+				<>
+					<div className="notice warn change-block">
+						<Icon name="alert" size={18} />
+						<div>
+							<strong>Create a backup before continuing.</strong>
+							<p>
+								Other packages depend on what you are removing, so they will be removed as well. This can break your project and cannot be undone without a backup.
+							</p>
+						</div>
+					</div>
+					<label className="check-row">
+						<Checkbox checked={acknowledged} onChange={setAcknowledged} disabled={busy} label="Acknowledge the side effects" />
+						<span>I acknowledge that removing these packages may have unintended side effects.</span>
+					</label>
+				</>
 			)}
 
 			{summary.installs.length > 0 && (

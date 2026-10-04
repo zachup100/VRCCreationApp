@@ -212,13 +212,13 @@ export function ManageProjectPage({ path }: { path: string }) {
 		}
 	};
 
-	const apply = async () => {
+	const apply = async (acknowledged: boolean) => {
 		if (!review) {
 			return;
 		}
 		setWorking(true);
 		try {
-			await projectApplyChanges(path, review.request);
+			await projectApplyChanges(path, { ...review.request, acknowledgeDependents: acknowledged });
 			notify("success", "Package changes applied");
 			setReview(null);
 			setStaged({});
@@ -454,7 +454,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			)}
 			{dialogs.element}
 			{review && (
-				<ReviewChangesModal summary={review.summary} busy={working} onApply={() => void apply()}
+				<ReviewChangesModal summary={review.summary} busy={working} onApply={(acknowledged) => void apply(acknowledged)}
 					onClose={() => {
 						setReview(null);
 						setStaged({});

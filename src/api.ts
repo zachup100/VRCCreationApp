@@ -145,6 +145,7 @@ export interface ChangeRequest {
 	removes: string[];
 	resolve?: boolean;
 	reinstall?: string[];
+	acknowledgeDependents?: boolean;
 }
 
 export interface ChangeSummary {
@@ -155,7 +156,7 @@ export interface ChangeSummary {
 		previousVersion: string | null;
 		kind: "new" | "upgrade" | "downgrade" | "reinstall";
 	}[];
-	removes: { name: string; reason: "requested" | "legacy" | "unused" }[];
+	removes: { name: string; reason: "requested" | "dependent" | "legacy" | "unused" }[];
 	conflicts: {
 		package: string;
 		conflictingPackages: string[];
