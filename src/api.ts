@@ -105,3 +105,25 @@ export function repositoryRemove(index: number, expectedId: string): Promise<voi
 export function repositorySetHidden(id: string, hidden: boolean): Promise<void> {
 	return invoke<void>("repository_set_hidden", { id, hidden });
 }
+
+export type PackageSource = "official" | "curated" | "community" | "local";
+
+export interface PackageRow {
+	name: string;
+	displayName: string;
+	installedVersion: string | null;
+	latestVersion: string | null;
+	versions: string[];
+	source: PackageSource;
+	repository: string | null;
+	hasUpdate: boolean;
+}
+
+export interface ProjectPackages {
+	unityVersion: string;
+	rows: PackageRow[];
+}
+
+export function projectPackages(path: string, refresh: boolean): Promise<ProjectPackages> {
+	return invoke<ProjectPackages>("project_packages", { path, refresh });
+}

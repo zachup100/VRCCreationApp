@@ -1,5 +1,5 @@
 use crate::prefs::Prefs;
-use crate::vpm::VpmContext;
+use crate::vpm::{VpmContext, CURATED_ID, LOCAL_USER_ID, OFFICIAL_ID};
 use indexmap::IndexMap;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -9,9 +9,6 @@ use vrc_get_vpm::environment::{add_remote_repo, Settings};
 use vrc_get_vpm::repository::RemoteRepository;
 use vrc_get_vpm::VersionSelector;
 
-const OFFICIAL_ID: &str = "com.vrchat.repos.official";
-const CURATED_ID: &str = "com.vrchat.repos.curated";
-const LOCAL_USER_ID: &str = "local-user-packages";
 const OFFICIAL_URL: &str = "https://packages.vrchat.com/official?download";
 const CURATED_URL: &str = "https://packages.vrchat.com/curated?download";
 const MAX_REPOSITORY_BYTES: usize = 64 * 1024 * 1024;
@@ -294,7 +291,9 @@ pub async fn repository_add(url: String, vpm: State<'_, VpmContext>) -> Result<(
     settings
         .save(&vpm.io)
         .await
-        .map_err(|error| format!("Could not save repository settings: {error}"))
+        .map_err(|error| format!("Could not save repository settings: {error}"))?;
+    vpm.invalidate().await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -322,6 +321,7 @@ pub async fn repository_remove(
             .await
             .map_err(|error| format!("Could not save repository settings: {error}"))?;
     }
+    vpm.invalidate().await;
     let mut prefs = lock_prefs(&prefs)?;
     prefs.set_hidden(&expected_id, false);
     prefs.save().map_err(|error| error.to_string())

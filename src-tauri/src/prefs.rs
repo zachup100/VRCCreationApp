@@ -27,6 +27,10 @@ impl Prefs {
         Self { folder, data }
     }
 
+    pub fn hidden(&self) -> &[String] {
+        &self.data.hidden_repositories
+    }
+
     pub fn is_hidden(&self, id: &str) -> bool {
         self.data.hidden_repositories.iter().any(|item| item == id)
     }

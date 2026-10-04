@@ -844,8 +844,53 @@ code {
 	margin-top: auto;
 }
 
-.table-head.packages {
-	grid-template-columns: minmax(180px, 2fr) minmax(150px, 1.4fr) minmax(120px, 1fr) 80px;
+.table-head.packages,
+.row.packages {
+	grid-template-columns: minmax(200px, 2.2fr) minmax(120px, 1fr) minmax(130px, 1fr) 110px;
+}
+
+.row.packages {
+	min-height: 56px;
+	border-bottom: 1px solid var(--border);
+}
+
+.row.packages:hover {
+	background: var(--surface-hover);
+}
+
+.pkg-name {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	min-width: 0;
+}
+
+.pkg-name div {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.pkg-name strong {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.not-installed .pkg-name {
+	opacity: 0.8;
+}
+
+.latest {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.tag.update {
+	margin-left: 0;
+	color: var(--success);
+	border-color: var(--success);
 }
 
 .table-head.repos,

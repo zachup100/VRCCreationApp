@@ -31,6 +31,7 @@ pub fn run() {
             commands::projects::import_from_vcc,
             commands::projects::open_project,
             commands::projects::open_project_folder,
+            commands::packages::project_packages,
             commands::repositories::repositories_info,
             commands::repositories::repository_preview,
             commands::repositories::repository_add,
