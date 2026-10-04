@@ -486,10 +486,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			{dialogs.element}
 			{review && (
 				<ReviewChangesModal summary={review.summary} busy={working} onApply={(acknowledged) => void apply(acknowledged)}
-					onClose={() => {
-						setReview(null);
-						setStaged({});
-					}}
+					onClose={() => setReview(null)}
 				/>
 			)}
 			<div className="page-foot">
