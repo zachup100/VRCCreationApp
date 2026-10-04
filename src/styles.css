@@ -330,6 +330,7 @@ button:disabled {
 	top: calc(100% + 6px);
 	right: 0;
 	z-index: 30;
+	width: max-content;
 	min-width: 210px;
 	padding: 6px;
 	background: var(--surface-raised);
@@ -358,6 +359,7 @@ button:disabled {
 	border: none;
 	border-radius: 6px;
 	text-align: left;
+	white-space: nowrap;
 }
 
 .menu-item:hover:not(:disabled) {
