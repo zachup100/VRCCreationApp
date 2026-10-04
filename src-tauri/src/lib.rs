@@ -1,5 +1,7 @@
+mod applog;
 mod args;
 mod commands;
+mod download;
 mod prefs;
 mod presets;
 mod prereq;
@@ -19,6 +21,7 @@ pub fn run() {
         .setup(|app| {
             let folder = app.path().app_data_dir()?;
             app.manage(Mutex::new(store::ProjectStore::load(folder.clone())));
+            app.manage(applog::AppLog::default());
             app.manage(Mutex::new(prefs::Prefs::load(folder.clone())));
             app.manage(Mutex::new(presets::PresetStore::load(folder.clone())));
             app.manage(vpm::VpmContext::new(folder.join("vpm"))?);
@@ -56,6 +59,8 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::packages::project_packages,
+            applog::get_logs,
+            applog::clear_logs,
             commands::presets::list_presets,
             commands::presets::save_preset,
             commands::presets::delete_preset,

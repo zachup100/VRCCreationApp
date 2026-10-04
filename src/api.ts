@@ -329,3 +329,18 @@ export function deletePreset(id: string): Promise<void> {
 export function availablePackages(refresh: boolean): Promise<AvailablePackage[]> {
 	return invoke<AvailablePackage[]>("available_packages", { refresh });
 }
+
+export interface BackendLogEntry {
+	id: number;
+	time: number;
+	level: "info" | "success" | "warning" | "error";
+	message: string;
+}
+
+export function getLogs(): Promise<BackendLogEntry[]> {
+	return invoke<BackendLogEntry[]>("get_logs");
+}
+
+export function clearBackendLogs(): Promise<void> {
+	return invoke<void>("clear_logs");
+}

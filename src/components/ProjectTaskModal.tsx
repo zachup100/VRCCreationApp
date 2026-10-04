@@ -4,9 +4,10 @@ import { useApp } from "../AppContext";
 import { useActions } from "../actions";
 import { backupProject, migrateProject, openBackupFolder } from "../api";
 import type { BackupResult, MigrationKind, ProjectInfo, TaskProgress } from "../api";
-import { errorMessage } from "../format";
+import { errorMessage, formatBytes } from "../format";
 import { Button } from "./Button";
 import { Checkbox, Modal } from "./Controls";
+import { DownloadStatus } from "./DownloadStatus";
 import { Icon } from "./Icons";
 
 export type TaskMode = "backup" | MigrationKind;
@@ -26,16 +27,6 @@ type State =
 	| { step: "running" }
 	| { step: "done"; backup: BackupResult | null }
 	| { step: "failed"; message: string; backupRequested: boolean };
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024 * 1024) {
-		return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-	}
-	if (bytes < 1024 * 1024 * 1024) {
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	}
-	return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
 
 export function ProjectTaskModal({ project, mode, onClose }: { project: ProjectInfo; mode: TaskMode; onClose: () => void }) {
 	const { settings, editors, editorsLoading, refreshProjects, setPackageOperation, notify } = useApp();
@@ -212,6 +203,7 @@ export function ProjectTaskModal({ project, mode, onClose }: { project: ProjectI
 							<div className="progress-fill" style={{ width: `${backupProgress.total ? (backupProgress.done / backupProgress.total) * 100 : 0}%` }} />
 						</div>
 					)}
+					{phase === "packages" && <DownloadStatus active />}
 					{phase === "unity" && <pre className="task-log" ref={logRef}>{logLines.join("\n") || "Starting Unity..."}</pre>}
 				</div>
 			)}

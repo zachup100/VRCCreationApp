@@ -23,3 +23,13 @@ export function timeAgo(timestampMs: number, now = Date.now()): string {
 export function errorMessage(error: unknown): string {
 	return typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
 }
+
+export function formatBytes(bytes: number): string {
+	if (bytes < 1024 * 1024) {
+		return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+	}
+	if (bytes < 1024 * 1024 * 1024) {
+		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+	}
+	return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}

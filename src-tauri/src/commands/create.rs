@@ -1,4 +1,6 @@
 use crate::commands::projects::{category_of, to_info, ProjectInfo};
+use crate::applog::log;
+use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::presets::{Preset, PresetStore};
 use crate::store::{now_millis, ProjectStore, StoredProject};
@@ -7,7 +9,7 @@ use include_dir::{include_dir, Dir, DirEntry};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 use vrc_get_vpm::environment::PackageInstaller;
 use vrc_get_vpm::io::DefaultProjectIo;
 use vrc_get_vpm::unity_project::AddPackageOperation;
@@ -165,6 +167,7 @@ async fn build_project(
     name: &str,
     target: &Path,
     vpm: &VpmContext,
+    http: &ProgressHttp,
 ) -> Result<UnityProject, String> {
     let folder = template.folder;
     let destination = target.to_path_buf();
@@ -191,7 +194,7 @@ async fn build_project(
     if !changes.conflicts().is_empty() {
         return Err("The VRChat packages conflict with the project template".to_string());
     }
-    let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
+    let installer = PackageInstaller::new(&vpm.io, Some(http));
     project
         .apply_pending_changes(&installer, changes)
         .await
@@ -226,6 +229,7 @@ async fn apply_preset(
     preset: &Preset,
     allow_prerelease: bool,
     vpm: &VpmContext,
+    http: &ProgressHttp,
 ) -> PresetOutcome {
     let mut outcome = PresetOutcome::default();
     let collection = match vpm.collection(false).await {
@@ -334,7 +338,7 @@ async fn apply_preset(
         ));
         return outcome;
     }
-    let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
+    let installer = PackageInstaller::new(&vpm.io, Some(http));
     if let Err(error) = project.apply_pending_changes(&installer, changes).await {
         outcome
             .warnings
@@ -345,6 +349,7 @@ async fn apply_preset(
 
 #[tauri::command]
 pub async fn create_project(
+    app: AppHandle,
     template: String,
     name: String,
     location: String,
@@ -395,7 +400,8 @@ pub async fn create_project(
         Err(error) => return Err(format!("Could not create the project folder: {error}")),
     }
 
-    let mut project = match build_project(template, &name, &target, &vpm).await {
+    let http = ProgressHttp::new(vpm.http.clone(), app.clone());
+    let mut project = match build_project(template, &name, &target, &vpm, &http).await {
         Ok(project) => project,
         Err(message) => {
             let _ = tokio::fs::remove_dir_all(&target).await;
@@ -404,7 +410,7 @@ pub async fn create_project(
     };
 
     let outcome = match &preset {
-        Some(preset) => apply_preset(&mut project, preset, allow_prerelease, &vpm).await,
+        Some(preset) => apply_preset(&mut project, preset, allow_prerelease, &vpm, &http).await,
         None => PresetOutcome::default(),
     };
 
@@ -417,6 +423,13 @@ pub async fn create_project(
         last_modified: now_millis(),
         launch_args: None,
     };
+    log(&app, "success", format!("Created project {name} from {}", template.title));
+    for note in &outcome.notes {
+        log(&app, "info", note.clone());
+    }
+    for warning in &outcome.warnings {
+        log(&app, "warning", warning.clone());
+    }
     let mut store = store
         .lock()
         .map_err(|_| "Project store is unavailable".to_string())?;

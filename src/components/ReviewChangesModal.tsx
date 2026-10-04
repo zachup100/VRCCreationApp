@@ -3,6 +3,7 @@ import type { ChangeSummary } from "../api";
 import { Button } from "./Button";
 import { Icon } from "./Icons";
 import { Modal } from "./Controls";
+import { DownloadStatus } from "./DownloadStatus";
 
 const installLabels: Record<ChangeSummary["installs"][number]["kind"], string> = {
 	new: "Install",
@@ -48,6 +49,7 @@ export function ReviewChangesModal({
 				</>
 			}
 		>
+			<DownloadStatus active={busy} />
 			{empty && !blocked && <p>Nothing needs to change.</p>}
 
 			{blocked && (

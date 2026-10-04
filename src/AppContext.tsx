@@ -108,7 +108,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		(kind: NoticeKind, text: string) => {
 			const id = nextId.current++;
 			setToasts((current) => [...current, { id, kind, text }]);
-			setLog((current) => [{ id, time: Date.now(), kind, text }, ...current].slice(0, 200));
+			if (kind === "error" || kind === "warning") {
+				setLog((current) => [{ id, time: Date.now(), kind, text }, ...current].slice(0, 200));
+			}
 			window.setTimeout(() => dismissToast(id), kind === "error" ? 7000 : 4000);
 		},
 		[dismissToast],

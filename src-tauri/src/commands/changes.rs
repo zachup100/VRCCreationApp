@@ -1,3 +1,5 @@
+use crate::applog::{log, project_label};
+use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::store::ProjectStore;
 use crate::vpm::VpmContext;
@@ -5,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 use vrc_get_vpm::environment::PackageInstaller;
 use vrc_get_vpm::io::DefaultProjectIo;
 use vrc_get_vpm::unity_project::pending_project_changes::{
@@ -255,6 +257,28 @@ async fn plan_repair<'env>(
         .map_err(|error| error.to_string())
 }
 
+fn describe(request: &ChangeRequest) -> String {
+    if request.resolve {
+        return "resolved the project's packages".to_string();
+    }
+    if !request.reinstall.is_empty() {
+        return format!("reinstalled {}", request.reinstall.join(", "));
+    }
+    let mut parts = Vec::new();
+    if !request.removes.is_empty() {
+        parts.push(format!("removed {}", request.removes.join(", ")));
+    }
+    if !request.installs.is_empty() {
+        let list: Vec<String> = request
+            .installs
+            .iter()
+            .map(|item| format!("{} {}", item.name, item.version))
+            .collect();
+        parts.push(format!("installed {}", list.join(", ")));
+    }
+    parts.join("; ")
+}
+
 fn prerelease_enabled(prefs: &State<'_, Mutex<Prefs>>) -> Result<bool, String> {
     Ok(prefs
         .lock()
@@ -315,6 +339,7 @@ pub async fn project_plan_changes(
 
 #[tauri::command]
 pub async fn project_apply_changes(
+    app: AppHandle,
     path: String,
     request: ChangeRequest,
     vpm: State<'_, VpmContext>,
@@ -325,7 +350,8 @@ pub async fn project_apply_changes(
     request.validate()?;
     let _ops = vpm.try_busy()?;
     let collection = vpm.collection(false).await?;
-    let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
+    let http = ProgressHttp::new(vpm.http.clone(), app.clone());
+    let installer = PackageInstaller::new(&vpm.io, Some(&http));
 
     if request.is_repair() {
         let mut project = load_project(&path, &store).await?;
@@ -337,6 +363,7 @@ pub async fn project_apply_changes(
             .apply_pending_changes(&installer, changes)
             .await
             .map_err(|error| format!("Could not apply the changes: {error}"))?;
+        log(&app, "success", format!("{}: {}", project_label(&path), describe(&request)));
         let mut store = store
             .lock()
             .map_err(|_| "Project store is unavailable".to_string())?;
@@ -368,6 +395,7 @@ pub async fn project_apply_changes(
             .map_err(|error| format!("Could not apply the changes: {error}"))?;
     }
 
+    log(&app, "success", format!("{}: {}", project_label(&path), describe(&request)));
     let mut store = store
         .lock()
         .map_err(|_| "Project store is unavailable".to_string())?;

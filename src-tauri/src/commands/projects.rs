@@ -1,3 +1,4 @@
+use crate::applog::{log, project_label};
 use crate::args::split_args;
 use crate::prefs::Prefs;
 use crate::store::{now_millis, path_key, ProjectStore, StoredProject};
@@ -5,7 +6,7 @@ use crate::vpm::VpmContext;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{AppHandle, State};
 use vrc_get_vpm::environment::VccDatabaseConnection;
 use vrc_get_vpm::io::{DefaultEnvironmentIo, DefaultProjectIo};
 use vrc_get_vpm::unity_hub;
@@ -140,6 +141,7 @@ pub fn set_project_favorite(
 
 #[tauri::command]
 pub async fn import_from_vcc(
+    app: AppHandle,
     vpm: State<'_, VpmContext>,
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<ImportResult, String> {
@@ -195,6 +197,7 @@ pub async fn import_from_vcc(
     if imported > 0 {
         store.save().map_err(|error| error.to_string())?;
     }
+    log(&app, "success", format!("Imported projects from VCC: {imported} added, {} already in the list", found - imported));
     Ok(ImportResult {
         found,
         imported,
@@ -204,6 +207,7 @@ pub async fn import_from_vcc(
 
 #[tauri::command]
 pub async fn open_project(
+    app: AppHandle,
     path: String,
     editor_version: Option<String>,
     vpm: State<'_, VpmContext>,
@@ -250,6 +254,7 @@ pub async fn open_project(
         .args(args)
         .spawn()
         .map_err(|error| format!("Could not start Unity: {error}"))?;
+    log(&app, "info", format!("Opened {} with Unity {version}", project_label(&path)));
     let mut store = lock(&state)?;
     store.touch(&path);
     store.save().map_err(|error| error.to_string())

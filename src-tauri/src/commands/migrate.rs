@@ -1,4 +1,6 @@
+use crate::applog::{log, project_label};
 use crate::commands::projects::category_of;
+use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::store::ProjectStore;
 use crate::vpm::VpmContext;
@@ -252,7 +254,9 @@ pub async fn backup_project(
 ) -> Result<BackupResult, String> {
     let _busy = vpm.try_busy()?;
     check_listed(&path, &store)?;
-    create_backup(&app, Path::new(&path), &prefs).await
+    let result = create_backup(&app, Path::new(&path), &prefs).await?;
+    log(&app, "success", format!("Backed up {} to {}", project_label(&path), result.path));
+    Ok(result)
 }
 
 #[tauri::command]
@@ -274,10 +278,15 @@ fn run_unity_upgrade(app: &AppHandle, executable: PathBuf, project: &Path) -> Re
         .stdin(Stdio::null())
         .spawn()
         .map_err(|error| format!("Could not start Unity: {error}"))?;
+    let mut tail: std::collections::VecDeque<String> = std::collections::VecDeque::new();
     if let Some(stdout) = child.stdout.take() {
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             let line = line.trim().to_string();
             if !line.is_empty() {
+                if tail.len() >= 25 {
+                    tail.pop_front();
+                }
+                tail.push_back(line.clone());
                 emit(app, TaskProgress::UnityLog { line });
             }
         }
@@ -288,6 +297,8 @@ fn run_unity_upgrade(app: &AppHandle, executable: PathBuf, project: &Path) -> Re
     if status.success() {
         Ok(())
     } else {
+        let lines: Vec<String> = tail.into_iter().collect();
+        log(app, "error", format!("Unity exited with {status}. Last output:\n{}", lines.join("\n")));
         Err(format!("Unity exited with {status}"))
     }
 }
@@ -343,7 +354,8 @@ pub async fn migrate_project(
 
     emit(&app, TaskProgress::Phase { name: "packages" });
     let collection = vpm.collection(false).await?;
-    let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
+    let http = ProgressHttp::new(vpm.http.clone(), app.clone());
+    let installer = PackageInstaller::new(&vpm.io, Some(&http));
     match kind {
         MigrationKind::Vpm => project
             .migrate_vpm(&*collection, &installer, allow_prerelease)
@@ -364,6 +376,15 @@ pub async fn migrate_project(
             .map_err(|_| "The Unity upgrade was interrupted".to_string())??;
     }
 
+    log(
+        &app,
+        "success",
+        format!(
+            "Migrated {} ({})",
+            project_label(&path),
+            if kind == MigrationKind::Vpm { "VPM package system" } else { "Unity 2022" }
+        ),
+    );
     let refreshed = load_project(&path).await?;
     let category = category_of(refreshed.detect_project_type().await).to_string();
     let mut store = store

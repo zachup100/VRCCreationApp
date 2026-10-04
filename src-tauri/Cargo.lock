@@ -4688,9 +4688,11 @@ name = "vr-creation-app"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "futures",
  "include_dir",
  "indexmap 2.14.2",
  "open",
+ "pin-project-lite",
  "reqwest",
  "rfd 0.17.2",
  "serde",

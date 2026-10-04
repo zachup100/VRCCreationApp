@@ -5,6 +5,7 @@ import { createProject, listPresets, listTemplates } from "../api";
 import type { Preset, TemplateInfo } from "../api";
 import { Button } from "../components/Button";
 import { TextField } from "../components/Controls";
+import { DownloadStatus } from "../components/DownloadStatus";
 import { PresetPackages } from "../components/PresetPackages";
 import { Icon } from "../components/Icons";
 import { errorMessage } from "../format";
@@ -199,10 +200,13 @@ export function NewProjectPage() {
 					</div>
 				)}
 				{creating && (
-					<div className="notice">
-						<Icon name="refresh" size={18} className="spin" />
-						<span>Creating the project and installing the VRChat packages. The first time can take a minute while the packages download.</span>
-					</div>
+					<>
+						<div className="notice">
+							<Icon name="refresh" size={18} className="spin" />
+							<span>Creating the project and installing the VRChat packages. The first time can take a minute while the packages download.</span>
+						</div>
+						<DownloadStatus active />
+					</>
 				)}
 				{error && <p className="field-error">{error}</p>}
 				<div className="form-actions">

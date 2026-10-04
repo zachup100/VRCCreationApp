@@ -1,3 +1,4 @@
+use crate::applog::log;
 use crate::commands::create::validate_name;
 use crate::commands::migrate::{backup_directory, emit, BackupMeta, TaskProgress, BACKUP_MARKER};
 use crate::commands::projects::{category_of, to_info, ProjectInfo};
@@ -150,12 +151,14 @@ pub async fn delete_backup(
 ) -> Result<(), String> {
     let _busy = vpm.try_busy()?;
     let directory = backup_directory(&app, &prefs)?;
-    let (path, _) = tokio::task::spawn_blocking(move || resolve_backup(&directory, &file_name))
+    let (path, info) = tokio::task::spawn_blocking(move || resolve_backup(&directory, &file_name))
         .await
         .map_err(|_| "Could not read the backup".to_string())??;
     tokio::fs::remove_file(path)
         .await
-        .map_err(|error| format!("Could not delete the backup: {error}"))
+        .map_err(|error| format!("Could not delete the backup: {error}"))?;
+    log(&app, "info", format!("Deleted the backup {}", info.file_name));
+    Ok(())
 }
 
 fn backup_root(archive: &mut ZipArchive<BufReader<File>>) -> Result<String, String> {
@@ -299,6 +302,7 @@ pub async fn restore_backup(
         store.update_info(&stored.path, unity_version, category);
     }
     store.save().map_err(|error| error.to_string())?;
+    log(&app, "success", format!("Restored {} to {}", info.project_name, stored.path));
     Ok(RestoreOutcome::Restored {
         project: to_info(&stored),
     })

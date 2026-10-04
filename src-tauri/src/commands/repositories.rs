@@ -1,3 +1,4 @@
+use crate::applog::log;
 use crate::prefs::Prefs;
 use crate::vpm::{VpmContext, CURATED_ID, LOCAL_USER_ID, OFFICIAL_ID};
 use indexmap::IndexMap;
@@ -314,11 +315,13 @@ pub async fn repository_preview(
 
 #[tauri::command]
 pub async fn repository_add(
+    app: AppHandle,
     url: String,
     headers: Vec<HeaderInput>,
     vpm: State<'_, VpmContext>,
 ) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
+    let parsed_label = parsed.to_string();
     let _busy = vpm.try_busy()?;
     let _guard = vpm.lock.lock().await;
     let mut settings = Settings::load(&vpm.io)
@@ -332,11 +335,13 @@ pub async fn repository_add(
         .await
         .map_err(|error| format!("Could not save repository settings: {error}"))?;
     vpm.invalidate().await;
+    log(&app, "success", format!("Added repository {parsed_label}"));
     Ok(())
 }
 
 #[tauri::command]
 pub async fn repository_remove(
+    app: AppHandle,
     index: usize,
     expected_id: String,
     vpm: State<'_, VpmContext>,
@@ -362,6 +367,7 @@ pub async fn repository_remove(
             .map_err(|error| format!("Could not save repository settings: {error}"))?;
     }
     vpm.invalidate().await;
+    log(&app, "info", format!("Removed repository {expected_id}"));
     let mut prefs = lock_prefs(&prefs)?;
     prefs.set_hidden(&expected_id, false);
     prefs.save().map_err(|error| error.to_string())
@@ -508,6 +514,17 @@ pub async fn import_packages_from_vcc(
             .await
             .map_err(|error| format!("Could not save repository settings: {error}"))?;
         vpm.invalidate().await;
+    }
+    log(
+        &app,
+        "success",
+        format!(
+            "Imported from VCC: {} of {} repositories and {} of {} package folders added",
+            result.repositories_added, result.repositories_found, result.folders_added, result.folders_found
+        ),
+    );
+    for failure in &result.failures {
+        log(&app, "warning", failure.clone());
     }
     Ok(result)
 }
