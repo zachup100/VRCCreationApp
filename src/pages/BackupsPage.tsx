@@ -89,7 +89,7 @@ export function BackupsPage() {
 							<div key={backup.fileName} className="row backups">
 								<div className="col-name">
 									<strong title={backup.projectName}>{backup.projectName}</strong>
-									<span className="path" title={backup.fileName}>
+									<span className="path-chip compact" title={backup.fileName}>
 										{backup.fileName}
 									</span>
 								</div>

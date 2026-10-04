@@ -203,7 +203,7 @@ export function ProjectsPage() {
 								</div>
 								<div className="col-name">
 									<strong title={project.name}>{project.name}</strong>
-									<span className="path" title={project.path}>
+									<span className="path-chip compact" title={project.path}>
 										{project.exists ? project.path : `${project.path} (missing)`}
 									</span>
 								</div>
@@ -230,7 +230,7 @@ export function ProjectsPage() {
 								<StarButton project={project} onToggle={() => void actions.toggleFavorite(project)} />
 							</div>
 							<strong title={project.name}>{project.name}</strong>
-							<span className="path" title={project.path}>
+							<span className="path-chip compact" title={project.path}>
 								{project.exists ? project.path : `${project.path} (missing)`}
 							</span>
 							<div className="project-card-meta">

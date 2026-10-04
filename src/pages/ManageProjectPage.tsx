@@ -312,7 +312,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 				</SplitButton>
 			</header>
 			<p className="located">
-				<strong>Located At:</strong> <span className="path-inline">{project.path}</span>
+				<strong>Located At:</strong> <span className="path-chip inline">{project.path}</span>
 				{!project.exists && <span className="tag danger">missing</span>}
 			</p>
 			{isLegacy(project) && project.exists && (
