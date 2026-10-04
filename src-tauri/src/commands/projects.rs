@@ -231,6 +231,14 @@ pub async fn import_from_vcc(
     })
 }
 
+pub(crate) fn reap_in_background(mut child: std::process::Child) {
+    let _ = std::thread::Builder::new()
+        .name("unity-reaper".to_string())
+        .spawn(move || {
+            let _ = child.wait();
+        });
+}
+
 #[tauri::command]
 pub async fn open_project(
     app: AppHandle,
@@ -274,12 +282,13 @@ pub async fn open_project(
         .find(|editor| editor.version.to_string() == version)
         .ok_or_else(|| format!("Unity {version} is not installed"))?;
     let executable = unity_hub::get_executable_path(&editor.path).into_owned();
-    std::process::Command::new(executable)
+    let child = std::process::Command::new(executable)
         .arg("-projectPath")
         .arg(&path)
         .args(args)
         .spawn()
         .map_err(|error| format!("Could not start Unity: {error}"))?;
+    reap_in_background(child);
     log(&app, "info", format!("Opened {} with Unity {version}", project_label(&path)));
     let mut store = lock(&state)?;
     store.touch(&path);
@@ -393,5 +402,23 @@ mod tests {
         assert_eq!(vpm_category(true, true, true, false), Some("avatar"));
         assert_eq!(vpm_category(true, true, true, true), Some("avatar"));
         assert_eq!(vpm_category(true, true, false, false), Some("avatar"));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_finished_child_process_is_collected_instead_of_left_as_a_zombie() {
+        let child = std::process::Command::new("true").spawn().unwrap();
+        let pid = child.id();
+        reap_in_background(child);
+        let proc_entry = std::path::PathBuf::from(format!("/proc/{pid}"));
+        let mut gone = false;
+        for _ in 0..100 {
+            if !proc_entry.exists() {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(gone, "process {pid} was not collected");
     }
 }
