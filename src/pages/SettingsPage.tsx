@@ -282,7 +282,7 @@ function GeneralTab() {
 												{editor.architecture && <span className="chip">{editor.architecture}</span>}
 												{editor.custom && <span className="chip">custom</span>}
 											</div>
-											<span className="editor-path" title={editor.path}>
+											<span className="path-chip" title={editor.path}>
 												{editor.path}
 											</span>
 										</div>
