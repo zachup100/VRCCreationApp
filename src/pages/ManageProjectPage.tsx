@@ -7,7 +7,7 @@ import { Button, IconButton } from "../components/Button";
 import { EmptyState, Select, SearchInput } from "../components/Controls";
 import { ReviewChangesModal } from "../components/ReviewChangesModal";
 import { Icon } from "../components/Icons";
-import { SplitButton } from "../components/Menu";
+import { MoreMenu, SplitButton } from "../components/Menu";
 import { useProjectDialogs } from "../components/ProjectDialogs";
 import { TypeBadge, VersionChip, canMigrateTo2022, hasEditor, isLegacy } from "../components/ProjectParts";
 import { errorMessage, timeAgo } from "../format";
@@ -17,7 +17,7 @@ import type { RepoFilter } from "../packageUi";
 type PackagesState =
 	| { status: "loading" }
 	| { status: "error"; message: string }
-	| { status: "ready"; rows: PackageRow[] };
+	| { status: "ready"; rows: PackageRow[]; missing: string[] };
 
 type StagedChange = { type: "install"; version: string } | { type: "remove" };
 type Staged = Record<string, StagedChange>;
@@ -29,6 +29,7 @@ function PackageTable({
 	busy,
 	staged,
 	onStage,
+	onReinstall,
 }: {
 	rows: PackageRow[];
 	query: string;
@@ -36,6 +37,7 @@ function PackageTable({
 	busy: boolean;
 	staged: Staged;
 	onStage: (name: string, change: StagedChange | null) => void;
+	onReinstall: (name: string) => void;
 }) {
 	const [targets, setTargets] = useState<Record<string, string>>({});
 	const visible = useMemo(() => {
@@ -67,7 +69,7 @@ function PackageTable({
 				const options = row.versions.map((version) => ({ value: version, label: version }));
 				const rowClass = change ? (change.type === "remove" ? " staged-remove" : " staged-install") : "";
 				return (
-					<div key={row.name} className={`row packages${installed ? "" : " not-installed"}${rowClass}`}>
+					<div key={row.name} className={`row packages with-menu${installed ? "" : " not-installed"}${rowClass}`}>
 						<div className="pkg-name">
 							<Icon name="package" size={22} />
 							<div>
@@ -127,6 +129,14 @@ function PackageTable({
 								/>
 							)}
 						</div>
+						<div className="pkg-menu">
+							{installed && (
+								<MoreMenu
+									label={`More actions for ${row.displayName}`}
+									items={[{ label: "Reinstall", icon: "refresh", disabled: busy, onSelect: () => onReinstall(row.name) }]}
+								/>
+							)}
+						</div>
 					</div>
 				);
 			})}
@@ -153,7 +163,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			setRefreshing(true);
 			try {
 				const result = await projectPackages(path, refresh);
-				setPackages({ status: "ready", rows: result.rows });
+				setPackages({ status: "ready", rows: result.rows, missing: result.missing });
 				if (refresh) {
 					notify("success", "Package listings refreshed");
 				}
@@ -219,6 +229,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 		}
 	};
 
+	const missing = packages.status === "ready" ? packages.missing : [];
 	const updatable = packages.status === "ready" ? packages.rows.filter((row) => row.hasUpdate && row.latestVersion) : [];
 
 	useEffect(() => {
@@ -282,6 +293,17 @@ export function ManageProjectPage({ path }: { path: string }) {
 					</Button>
 				</div>
 			)}
+			{missing.length > 0 && project.exists && (
+				<div className="notice warn">
+					<span>
+						{missing.length} {missing.length === 1 ? "package is" : "packages are"} missing from this project's Packages folder ({missing.slice(0, 4).join(", ")}
+						{missing.length > 4 ? ", and more" : ""}). Resolve to download and reinstall them.
+					</span>
+					<Button variant="success" icon="refresh" disabled={working || stagedCount > 0} onClick={() => void plan({ installs: [], removes: [], resolve: true })}>
+						Resolve Packages
+					</Button>
+				</div>
+			)}
 			{!canOpen && (
 				<div className="notice warn">
 					<span>
@@ -341,11 +363,12 @@ export function ManageProjectPage({ path }: { path: string }) {
 				/>
 			</header>
 			<div className="card table">
-				<div className="table-head packages">
+				<div className="table-head packages with-menu">
 					<span className="th">Name</span>
 					<span className="th">Installed Version</span>
 					<span className="th">Latest Version</span>
 					<span className="th">Source</span>
+					<span className="th" />
 					<span className="th" />
 				</div>
 				{packages.status === "loading" && (
@@ -367,7 +390,15 @@ export function ManageProjectPage({ path }: { path: string }) {
 					</EmptyState>
 				)}
 				{packages.status === "ready" && (
-					<PackageTable rows={packages.rows} query={query} filter={filter} busy={working} staged={staged} onStage={stageChange} />
+					<PackageTable
+						rows={packages.rows}
+						query={query}
+						filter={filter}
+						busy={working || stagedCount > 0}
+						staged={staged}
+						onStage={stageChange}
+						onReinstall={(name) => void plan({ installs: [], removes: [], reinstall: [name] })}
+					/>
 				)}
 			</div>
 			{stagedCount > 0 && !review && (

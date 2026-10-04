@@ -95,12 +95,17 @@ export function repositoriesInfo(): Promise<RepositoriesInfo> {
 	return invoke<RepositoriesInfo>("repositories_info");
 }
 
-export function repositoryPreview(url: string): Promise<RepositoryPreview> {
-	return invoke<RepositoryPreview>("repository_preview", { url });
+export interface HeaderInput {
+	name: string;
+	value: string;
 }
 
-export function repositoryAdd(url: string): Promise<void> {
-	return invoke<void>("repository_add", { url });
+export function repositoryPreview(url: string, headers: HeaderInput[]): Promise<RepositoryPreview> {
+	return invoke<RepositoryPreview>("repository_preview", { url, headers });
+}
+
+export function repositoryAdd(url: string, headers: HeaderInput[]): Promise<void> {
+	return invoke<void>("repository_add", { url, headers });
 }
 
 export function repositoryRemove(index: number, expectedId: string): Promise<void> {
@@ -127,6 +132,7 @@ export interface PackageRow {
 export interface ProjectPackages {
 	unityVersion: string;
 	rows: PackageRow[];
+	missing: string[];
 }
 
 export function projectPackages(path: string, refresh: boolean): Promise<ProjectPackages> {
@@ -136,6 +142,8 @@ export function projectPackages(path: string, refresh: boolean): Promise<Project
 export interface ChangeRequest {
 	installs: { name: string; version: string }[];
 	removes: string[];
+	resolve?: boolean;
+	reinstall?: string[];
 }
 
 export interface ChangeSummary {

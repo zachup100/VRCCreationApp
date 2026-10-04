@@ -1821,3 +1821,62 @@ code {
 	color: var(--warn);
 	border-color: var(--warn);
 }
+
+.table-head.packages.with-menu,
+.row.packages.with-menu {
+	grid-template-columns: minmax(200px, 2.2fr) minmax(150px, 1.1fr) minmax(130px, 1fr) 100px 44px 44px;
+}
+
+.pkg-menu {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.header-toggle {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 12px;
+	color: var(--text);
+}
+
+.header-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin-top: 10px;
+}
+
+.header-row {
+	display: grid;
+	grid-template-columns: 1fr 1fr 34px;
+	gap: 8px;
+	align-items: center;
+}
+
+.header-row input {
+	height: 38px;
+	padding: 0 12px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	outline: none;
+	color: var(--text);
+}
+
+.header-row input:focus {
+	border-color: var(--accent);
+}
+
+.header-foot {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 13px;
+	align-items: flex-start;
+}
+
+.change-list {
+	max-height: 260px;
+	overflow-y: auto;
+}

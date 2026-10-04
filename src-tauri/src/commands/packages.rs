@@ -28,6 +28,7 @@ pub struct PackageRow {
 pub struct ProjectPackages {
     unity_version: String,
     rows: Vec<PackageRow>,
+    missing: Vec<String>,
 }
 
 #[derive(Default)]
@@ -215,8 +216,16 @@ pub async fn project_packages(
             })
     });
 
+    let mut missing: Vec<String> = project
+        .locked_packages()
+        .map(|locked| locked.name().to_string())
+        .filter(|name| project.get_installed_package(name).is_none())
+        .collect();
+    missing.sort();
+
     Ok(ProjectPackages {
         unity_version: unity.to_string(),
         rows,
+        missing,
     })
 }

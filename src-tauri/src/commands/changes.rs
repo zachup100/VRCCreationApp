@@ -28,6 +28,10 @@ pub struct ChangeRequest {
     installs: Vec<InstallRequest>,
     #[serde(default)]
     removes: Vec<String>,
+    #[serde(default)]
+    resolve: bool,
+    #[serde(default)]
+    reinstall: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -213,6 +217,44 @@ async fn plan_removes(
         .map_err(|error| error.to_string())
 }
 
+impl ChangeRequest {
+    fn is_empty(&self) -> bool {
+        self.installs.is_empty() && self.removes.is_empty() && !self.resolve && self.reinstall.is_empty()
+    }
+
+    fn is_repair(&self) -> bool {
+        self.resolve || !self.reinstall.is_empty()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.is_empty() {
+            return Err("No package changes were selected".to_string());
+        }
+        if self.is_repair() && (!self.installs.is_empty() || !self.removes.is_empty() || (self.resolve && !self.reinstall.is_empty())) {
+            return Err("Repairing packages cannot be combined with other changes".to_string());
+        }
+        Ok(())
+    }
+}
+
+async fn plan_repair<'env>(
+    project: &UnityProject,
+    collection: &'env vrc_get_vpm::environment::PackageCollection,
+    request: &ChangeRequest,
+) -> Result<PendingProjectChanges<'env>, String> {
+    if request.resolve {
+        return project
+            .resolve_request(collection)
+            .await
+            .map_err(|error| error.to_string());
+    }
+    let names: Vec<&str> = request.reinstall.iter().map(String::as_str).collect();
+    project
+        .reinstall_request(collection, &names)
+        .await
+        .map_err(|error| error.to_string())
+}
+
 fn prerelease_enabled(prefs: &State<'_, Mutex<Prefs>>) -> Result<bool, String> {
     Ok(prefs
         .lock()
@@ -241,12 +283,15 @@ pub async fn project_plan_changes(
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<ChangeSummary, String> {
     let allow_prerelease = prerelease_enabled(&prefs)?;
-    if request.installs.is_empty() && request.removes.is_empty() {
-        return Err("No package changes were selected".to_string());
-    }
+    request.validate()?;
     let _ops = vpm.try_busy()?;
     let project = load_project(&path, &store).await?;
     let collection = vpm.collection(false).await?;
+
+    if request.is_repair() {
+        let changes = plan_repair(&project, &collection, &request).await?;
+        return Ok(summarize(&project, &changes));
+    }
 
     let remove_summary = if request.removes.is_empty() {
         None
@@ -277,12 +322,27 @@ pub async fn project_apply_changes(
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
     let allow_prerelease = prerelease_enabled(&prefs)?;
-    if request.installs.is_empty() && request.removes.is_empty() {
-        return Err("No package changes were selected".to_string());
-    }
+    request.validate()?;
     let _ops = vpm.try_busy()?;
     let collection = vpm.collection(false).await?;
     let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
+
+    if request.is_repair() {
+        let mut project = load_project(&path, &store).await?;
+        let changes = plan_repair(&project, &collection, &request).await?;
+        if !changes.conflicts().is_empty() {
+            return Err("These changes have conflicts and cannot be applied".to_string());
+        }
+        project
+            .apply_pending_changes(&installer, changes)
+            .await
+            .map_err(|error| format!("Could not apply the changes: {error}"))?;
+        let mut store = store
+            .lock()
+            .map_err(|_| "Project store is unavailable".to_string())?;
+        store.touch(&path);
+        return store.save().map_err(|error| error.to_string());
+    }
 
     if !request.removes.is_empty() {
         let mut project = load_project(&path, &store).await?;

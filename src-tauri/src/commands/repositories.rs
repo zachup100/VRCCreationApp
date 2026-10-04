@@ -1,7 +1,7 @@
 use crate::prefs::Prefs;
 use crate::vpm::{VpmContext, CURATED_ID, LOCAL_USER_ID, OFFICIAL_ID};
 use indexmap::IndexMap;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
@@ -12,7 +12,31 @@ use vrc_get_vpm::VersionSelector;
 
 const OFFICIAL_URL: &str = "https://packages.vrchat.com/official?download";
 const CURATED_URL: &str = "https://packages.vrchat.com/curated?download";
+const MAX_HEADERS: usize = 10;
 const MAX_REPOSITORY_BYTES: usize = 64 * 1024 * 1024;
+
+#[derive(Deserialize)]
+pub struct HeaderInput {
+    name: String,
+    value: String,
+}
+
+fn header_map(headers: &[HeaderInput]) -> Result<IndexMap<Box<str>, Box<str>>, String> {
+    if headers.len() > MAX_HEADERS {
+        return Err("Too many headers".to_string());
+    }
+    let mut map = IndexMap::new();
+    for header in headers {
+        let name = header.name.trim();
+        if reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err()
+            || reqwest::header::HeaderValue::from_str(&header.value).is_err()
+        {
+            return Err("A header name or value is not valid".to_string());
+        }
+        map.insert(name.into(), header.value.as_str().into());
+    }
+    Ok(map)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -154,6 +178,7 @@ pub async fn repositories_info(
 #[tauri::command]
 pub async fn repository_preview(
     url: String,
+    headers: Vec<HeaderInput>,
     vpm: State<'_, VpmContext>,
 ) -> Result<RepositoryPreview, String> {
     let Some(parsed) = parse_http_url(&url) else {
@@ -196,7 +221,15 @@ pub async fn repository_preview(
         });
     }
 
-    let response = match vpm.http.get(parsed.clone()).send().await {
+    let header_values = match header_map(&headers) {
+        Ok(map) => map,
+        Err(message) => return Ok(RepositoryPreview::DownloadError { message }),
+    };
+    let mut request = vpm.http.get(parsed.clone());
+    for (name, value) in &header_values {
+        request = request.header(name.as_ref(), value.as_ref());
+    }
+    let response = match request.send().await {
         Ok(response) => response,
         Err(error) => {
             return Ok(RepositoryPreview::DownloadError {
@@ -280,14 +313,18 @@ pub async fn repository_preview(
 }
 
 #[tauri::command]
-pub async fn repository_add(url: String, vpm: State<'_, VpmContext>) -> Result<(), String> {
+pub async fn repository_add(
+    url: String,
+    headers: Vec<HeaderInput>,
+    vpm: State<'_, VpmContext>,
+) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
     let _busy = vpm.try_busy()?;
     let _guard = vpm.lock.lock().await;
     let mut settings = Settings::load(&vpm.io)
         .await
         .map_err(|error| format!("Could not read repository settings: {error}"))?;
-    add_remote_repo(&mut settings, parsed, None, IndexMap::new(), &vpm.io, &vpm.http)
+    add_remote_repo(&mut settings, parsed, None, header_map(&headers)?, &vpm.io, &vpm.http)
         .await
         .map_err(|error| format!("Could not add the repository: {error}"))?;
     settings

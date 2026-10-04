@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { repositoryAdd, repositoryPreview } from "../api";
-import type { RepositoryPreview } from "../api";
+import type { HeaderInput, RepositoryPreview } from "../api";
 import { errorMessage } from "../format";
 import { Button } from "./Button";
-import { Modal, TextField } from "./Controls";
+import { Modal, Switch, TextField } from "./Controls";
+import { Icon } from "./Icons";
 
 type CheckState =
 	| { phase: "idle" }
@@ -23,8 +24,18 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; onAdded: (name: string) => void }) {
 	const [url, setUrl] = useState("");
 	const [state, setState] = useState<CheckState>({ phase: "idle" });
+	const [useHeaders, setUseHeaders] = useState(false);
+	const [headers, setHeaders] = useState<HeaderInput[]>([{ name: "", value: "" }]);
 	const [adding, setAdding] = useState(false);
 	const [addError, setAddError] = useState<string | null>(null);
+
+	const activeHeaders = useHeaders ? headers.filter((header) => header.name.trim() !== "") : [];
+
+	const changeHeaders = (next: HeaderInput[]) => {
+		setHeaders(next);
+		setState({ phase: "idle" });
+		setAddError(null);
+	};
 
 	const check = async () => {
 		if (!url.trim() || state.phase === "checking") {
@@ -33,7 +44,7 @@ export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; 
 		setState({ phase: "checking" });
 		setAddError(null);
 		try {
-			setState({ phase: "result", preview: await repositoryPreview(url) });
+			setState({ phase: "result", preview: await repositoryPreview(url, activeHeaders) });
 		} catch (error) {
 			setState({ phase: "failed", message: errorMessage(error) });
 		}
@@ -49,7 +60,7 @@ export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; 
 		setAdding(true);
 		setAddError(null);
 		try {
-			await repositoryAdd(success.url);
+			await repositoryAdd(success.url, activeHeaders);
 			onAdded(success.name);
 			onClose();
 		} catch (error) {
@@ -110,6 +121,54 @@ export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; 
 						setAddError(null);
 					}}
 				/>
+				<div className="header-toggle">
+					<Switch
+						label="Use authentication headers"
+						checked={useHeaders}
+						onChange={(value) => {
+							setUseHeaders(value);
+							setState({ phase: "idle" });
+						}}
+					/>
+					<span>This repository needs authentication headers</span>
+				</div>
+				{useHeaders && (
+					<div className="header-rows">
+						{headers.map((header, index) => (
+							<div key={index} className="header-row">
+								<input
+									type="text"
+									value={header.name}
+									placeholder="Header name"
+									aria-label="Header name"
+									onChange={(event) => changeHeaders(headers.map((item, at) => (at === index ? { ...item, name: event.target.value } : item)))}
+								/>
+								<input
+									type="password"
+									value={header.value}
+									placeholder="Value"
+									aria-label="Header value"
+									autoComplete="off"
+									onChange={(event) => changeHeaders(headers.map((item, at) => (at === index ? { ...item, value: event.target.value } : item)))}
+								/>
+								<button
+									type="button"
+									className="icon-btn remove"
+									aria-label="Remove header"
+									onClick={() => changeHeaders(headers.length > 1 ? headers.filter((_, at) => at !== index) : [{ name: "", value: "" }])}
+								>
+									<Icon name="minusCircle" size={18} />
+								</button>
+							</div>
+						))}
+						<div className="header-foot">
+							<button type="button" className="link-btn" onClick={() => changeHeaders([...headers, { name: "", value: "" }])}>
+								Add another header
+							</button>
+							<span className="muted">Saved on this computer in plain text, the same way VCC stores them.</span>
+						</div>
+					</div>
+				)}
 				{problem && <p className="field-error">{problem}</p>}
 			</form>
 
