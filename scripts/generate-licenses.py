@@ -40,7 +40,8 @@ def rust_packages():
         ["cargo", "metadata", "--format-version", "1", "--locked", "--filter-platform", TARGET, "--manifest-path", os.path.join(TAURI, "Cargo.toml")],
         check=True,
         capture_output=True,
-        text=True,
+        encoding="utf-8",
+        errors="replace",
     ).stdout
     metadata = json.loads(output)
     packages = {package["id"]: package for package in metadata["packages"]}
