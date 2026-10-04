@@ -1,7 +1,7 @@
 use crate::applog::log;
 use crate::commands::create::validate_name;
 use crate::commands::migrate::{backup_directory, emit, BackupMeta, TaskProgress, BACKUP_MARKER};
-use crate::commands::projects::{category_of, to_info, ProjectInfo};
+use crate::commands::projects::{category_of, detect_type, to_info, vpm_category, ProjectInfo};
 use crate::prefs::Prefs;
 use crate::store::{now_millis, ProjectStore, StoredProject};
 use crate::vpm::VpmContext;
@@ -48,6 +48,26 @@ fn read_text(archive: &mut ZipArchive<BufReader<File>>, name: &str) -> Option<St
     Some(text)
 }
 
+fn category_from_manifest(text: &str) -> Option<&'static str> {
+    let document: serde_json::Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).ok()?;
+    let keys = |section: &str| -> Vec<String> {
+        document
+            .get(section)
+            .and_then(serde_json::Value::as_object)
+            .map(|object| object.keys().cloned().collect())
+            .unwrap_or_default()
+    };
+    let locked = keys("locked");
+    let direct = keys("dependencies");
+    let has = |list: &[String], name: &str| list.iter().any(|item| item == name);
+    vpm_category(
+        has(&locked, "com.vrchat.avatars"),
+        has(&locked, "com.vrchat.worlds"),
+        has(&direct, "com.vrchat.avatars"),
+        has(&direct, "com.vrchat.worlds"),
+    )
+}
+
 fn read_backup(path: &Path) -> Option<BackupInfo> {
     let size_bytes = std::fs::metadata(path).ok()?.len();
     let file_name = path.file_name()?.to_string_lossy().into_owned();
@@ -55,10 +75,12 @@ fn read_backup(path: &Path) -> Option<BackupInfo> {
 
     if let Ok(meta) = serde_json::from_slice::<BackupMeta>(archive.comment()) {
         if meta.app == BACKUP_MARKER {
+            let derived = read_text(&mut archive, &format!("{}/Packages/vpm-manifest.json", meta.project_name))
+                .and_then(|text| category_from_manifest(&text));
             return Some(BackupInfo {
                 file_name,
                 project_name: meta.project_name,
-                category: meta.category,
+                category: derived.map(str::to_string).unwrap_or(meta.category),
                 unity_version: meta.unity_version,
                 created_at: meta.created_at,
                 size_bytes,
@@ -81,11 +103,9 @@ fn read_backup(path: &Path) -> Option<BackupInfo> {
         .find_map(|line| line.strip_prefix("m_EditorVersion:"))
         .map(|value| value.trim().to_string());
 
-    let category = match read_text(&mut archive, &format!("{name}/Packages/vpm-manifest.json")) {
-        Some(manifest) if manifest.contains("com.vrchat.avatars") => "avatar",
-        Some(manifest) if manifest.contains("com.vrchat.worlds") => "world",
-        _ => "other",
-    };
+    let category = read_text(&mut archive, &format!("{name}/Packages/vpm-manifest.json"))
+        .and_then(|text| category_from_manifest(&text))
+        .unwrap_or("other");
 
     Some(BackupInfo {
         file_name,
@@ -288,7 +308,7 @@ pub async fn restore_backup(
         match UnityProject::load(DefaultProjectIo::new(target.clone().into_boxed_path())).await {
             Ok(loaded) => (
                 Some(loaded.unity_version().to_string()),
-                category_of(loaded.detect_project_type().await).to_string(),
+                category_of(detect_type(&loaded).await).to_string(),
             ),
             Err(_) => (info.unity_version.clone(), info.category.clone()),
         };
@@ -463,5 +483,36 @@ mod tests {
         std::fs::create_dir(&target).unwrap();
         let mut report = |_: usize, _: usize| {};
         assert!(extract_backup(&mixed, &target, &mut report).is_err());
+    }
+
+    #[test]
+    fn the_project_type_comes_from_the_direct_sdk_when_both_are_installed() {
+        let both = r#"{"dependencies":{"com.vrchat.worlds":{"version":"3.x"}},"locked":{"com.vrchat.worlds":{"version":"3.10.5"},"com.vrchat.avatars":{"version":"3.10.5"}}}"#;
+        assert_eq!(category_from_manifest(both), Some("world"));
+        let avatar_direct = r#"{"dependencies":{"com.vrchat.avatars":{"version":"3.x"}},"locked":{"com.vrchat.worlds":{},"com.vrchat.avatars":{}}}"#;
+        assert_eq!(category_from_manifest(avatar_direct), Some("avatar"));
+        let single = r#"{"dependencies":{},"locked":{"com.vrchat.worlds":{}}}"#;
+        assert_eq!(category_from_manifest(single), Some("world"));
+        assert_eq!(category_from_manifest(r#"{"dependencies":{},"locked":{}}"#), None);
+        assert_eq!(category_from_manifest("not json"), None);
+    }
+
+    #[test]
+    fn a_stored_type_is_corrected_from_the_manifest_in_the_backup() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Mixed-2026-10-03_21-30-00.zip");
+        let manifest = r#"{"dependencies":{"com.vrchat.worlds":{"version":"3.x"}},"locked":{"com.vrchat.worlds":{},"com.vrchat.avatars":{}}}"#;
+        let meta = r#"{"app":"VRCreationApp","version":1,"projectName":"Mixed","category":"avatar","unityVersion":"2022.3.22f1","createdAt":1}"#;
+        plain_zip(&path, &[("Mixed/Packages/vpm-manifest.json", manifest)], Some(meta));
+        assert_eq!(read_backup(&path).unwrap().category, "world");
+    }
+
+    #[test]
+    fn a_stored_type_is_kept_when_the_backup_has_no_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("Legacy-2026-10-03_21-30-00.zip");
+        let meta = r#"{"app":"VRCreationApp","version":1,"projectName":"Legacy","category":"legacy-world","unityVersion":"2019.4.31f1","createdAt":1}"#;
+        plain_zip(&path, &[("Legacy/Assets/a.txt", "x")], Some(meta));
+        assert_eq!(read_backup(&path).unwrap().category, "legacy-world");
     }
 }

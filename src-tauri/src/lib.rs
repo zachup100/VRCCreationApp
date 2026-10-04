@@ -50,6 +50,7 @@ pub fn run() {
             commands::projects::import_from_vcc,
             commands::projects::open_project,
             commands::projects::open_project_folder,
+            commands::projects::refresh_project_info,
             commands::projects::set_project_launch_args,
             commands::backups::list_backups,
             commands::backups::delete_backup,

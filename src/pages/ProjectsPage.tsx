@@ -51,7 +51,7 @@ function StarButton({ project, onToggle }: { project: ProjectInfo; onToggle: () 
 }
 
 export function ProjectsPage() {
-	const { packageOperation, projects, projectsLoading, refreshProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
+	const { packageOperation, projects, projectsLoading, rescanProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
 	const actions = useActions();
 	const dialogs = useProjectDialogs();
 	const [query, setQuery] = useState("");
@@ -126,7 +126,7 @@ export function ProjectsPage() {
 					label="Refresh projects"
 					spinning={projectsLoading}
 					onClick={() => {
-						void refreshProjects();
+						void rescanProjects();
 						void refreshEditors();
 					}}
 				/>

@@ -1,4 +1,4 @@
-use crate::commands::projects::{category_of, to_info, ProjectInfo};
+use crate::commands::projects::{category_of, detect_type, to_info, ProjectInfo};
 use crate::applog::log;
 use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
@@ -417,7 +417,7 @@ pub async fn create_project(
     let stored = StoredProject {
         path: target.to_string_lossy().into_owned(),
         unity_version: Some(project.unity_version().to_string()),
-        category: category_of(project.detect_project_type().await).to_string(),
+        category: category_of(detect_type(&project).await).to_string(),
         favorite: false,
         added_at: now_millis(),
         last_modified: now_millis(),

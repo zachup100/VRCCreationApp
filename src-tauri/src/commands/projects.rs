@@ -33,6 +33,30 @@ pub struct ImportResult {
     skipped: usize,
 }
 
+pub(crate) fn vpm_category(has_avatars: bool, has_worlds: bool, direct_avatars: bool, direct_worlds: bool) -> Option<&'static str> {
+    match (has_avatars, has_worlds) {
+        (true, false) => Some("avatar"),
+        (false, true) => Some("world"),
+        (true, true) if direct_worlds && !direct_avatars => Some("world"),
+        (true, true) => Some("avatar"),
+        (false, false) => None,
+    }
+}
+
+pub(crate) async fn detect_type(project: &UnityProject) -> ProjectType {
+    let direct = |name: &str| project.dependencies().any(|dependency| dependency == name);
+    match vpm_category(
+        project.is_locked("com.vrchat.avatars"),
+        project.is_locked("com.vrchat.worlds"),
+        direct("com.vrchat.avatars"),
+        direct("com.vrchat.worlds"),
+    ) {
+        Some("world") => ProjectType::Worlds,
+        Some(_) => ProjectType::Avatars,
+        None => project.detect_project_type().await,
+    }
+}
+
 pub(crate) fn category_of(project_type: ProjectType) -> &'static str {
     match project_type {
         ProjectType::LegacyAvatars => "legacy-avatar",
@@ -98,7 +122,7 @@ pub async fn add_project(
     let stored = StoredProject {
         path: path.trim_end_matches(['/', '\\']).to_string(),
         unity_version: Some(project.unity_version().to_string()),
-        category: category_of(project.detect_project_type().await).to_string(),
+        category: category_of(detect_type(&project).await).to_string(),
         favorite: false,
         added_at: now_millis(),
         last_modified: now_millis(),
@@ -301,6 +325,44 @@ pub async fn open_project_folder(
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub async fn refresh_project_info(
+    vpm: State<'_, VpmContext>,
+    state: State<'_, Mutex<ProjectStore>>,
+) -> Result<usize, String> {
+    let Ok(_busy) = vpm.try_busy() else {
+        return Ok(0);
+    };
+    let paths: Vec<String> = lock(&state)?
+        .projects()
+        .iter()
+        .map(|project| project.path.clone())
+        .filter(|path| Path::new(path).is_dir())
+        .collect();
+    let mut updates = Vec::new();
+    for path in paths {
+        let Ok(loaded) = UnityProject::load(DefaultProjectIo::new(PathBuf::from(&path).into_boxed_path())).await else {
+            continue;
+        };
+        let category = category_of(detect_type(&loaded).await).to_string();
+        updates.push((path, loaded.unity_version().to_string(), category));
+    }
+    let mut store = lock(&state)?;
+    let mut changed = 0;
+    for (path, version, category) in updates {
+        if let Some(current) = store.find(&path) {
+            if current.unity_version.as_deref() != Some(version.as_str()) || current.category != category {
+                store.update_details(&path, Some(version), category);
+                changed += 1;
+            }
+        }
+    }
+    if changed > 0 {
+        store.save().map_err(|error| error.to_string())?;
+    }
+    Ok(changed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,5 +378,20 @@ mod tests {
         assert_eq!(category_of(ProjectType::LegacySdk2), "legacy-world");
         assert_eq!(category_of(ProjectType::Unknown), "other");
         assert_eq!(category_of(ProjectType::VpmStarter), "other");
+    }
+
+    #[test]
+    fn a_single_sdk_decides_the_category() {
+        assert_eq!(vpm_category(true, false, false, false), Some("avatar"));
+        assert_eq!(vpm_category(false, true, false, false), Some("world"));
+        assert_eq!(vpm_category(false, false, true, true), None);
+    }
+
+    #[test]
+    fn with_both_sdks_the_directly_requested_one_wins() {
+        assert_eq!(vpm_category(true, true, false, true), Some("world"));
+        assert_eq!(vpm_category(true, true, true, false), Some("avatar"));
+        assert_eq!(vpm_category(true, true, true, true), Some("avatar"));
+        assert_eq!(vpm_category(true, true, false, false), Some("avatar"));
     }
 }

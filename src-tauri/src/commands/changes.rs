@@ -1,5 +1,6 @@
 use crate::applog::{log, project_label};
 use crate::commands::packages::redundant_dependencies;
+use crate::commands::projects::{category_of, detect_type};
 use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::store::ProjectStore;
@@ -258,6 +259,18 @@ async fn plan_repair<'env>(
         .map_err(|error| error.to_string())
 }
 
+async fn refresh_details(path: &str, store: &State<'_, Mutex<ProjectStore>>) {
+    let Ok(project) = UnityProject::load(DefaultProjectIo::new(PathBuf::from(path).into_boxed_path())).await else {
+        return;
+    };
+    let category = category_of(detect_type(&project).await).to_string();
+    let version = project.unity_version().to_string();
+    if let Ok(mut store) = store.lock() {
+        store.update_details(path, Some(version), category);
+        let _ = store.save();
+    }
+}
+
 fn describe(request: &ChangeRequest) -> String {
     if request.resolve {
         return "resolved the project's packages".to_string();
@@ -365,6 +378,7 @@ pub async fn project_apply_changes(
             .await
             .map_err(|error| format!("Could not apply the changes: {error}"))?;
         log(&app, "success", format!("{}: {}", project_label(&path), describe(&request)));
+        refresh_details(&path, &store).await;
         let mut store = store
             .lock()
             .map_err(|_| "Project store is unavailable".to_string())?;
@@ -397,6 +411,7 @@ pub async fn project_apply_changes(
     }
 
     log(&app, "success", format!("{}: {}", project_label(&path), describe(&request)));
+    refresh_details(&path, &store).await;
     let mut store = store
         .lock()
         .map_err(|_| "Project store is unavailable".to_string())?;
@@ -434,6 +449,7 @@ pub async fn project_cleanup_manifest(
         "success",
         format!("{}: removed redundant entries {}", project_label(&path), names.join(", ")),
     );
+    refresh_details(&path, &store).await;
     Ok(names)
 }
 

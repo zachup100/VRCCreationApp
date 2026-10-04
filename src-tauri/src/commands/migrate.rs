@@ -1,5 +1,5 @@
 use crate::applog::{log, project_label};
-use crate::commands::projects::category_of;
+use crate::commands::projects::{category_of, detect_type};
 use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::store::ProjectStore;
@@ -213,7 +213,7 @@ async fn create_backup(
     let (unity_version, category) = match load_project(&project.to_string_lossy()).await {
         Ok(loaded) => (
             Some(loaded.unity_version().to_string()),
-            category_of(loaded.detect_project_type().await).to_string(),
+            category_of(detect_type(&loaded).await).to_string(),
         ),
         Err(_) => (None, "other".to_string()),
     };
@@ -390,7 +390,7 @@ pub async fn migrate_project(
         ),
     );
     let refreshed = load_project(&path).await?;
-    let category = category_of(refreshed.detect_project_type().await).to_string();
+    let category = category_of(detect_type(&refreshed).await).to_string();
     let mut store = store
         .lock()
         .map_err(|_| "Project store is unavailable".to_string())?;

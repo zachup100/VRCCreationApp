@@ -354,3 +354,7 @@ export function projectCleanupManifest(path: string): Promise<string[]> {
 export function duplicateProject(path: string, name: string, includeLibrary: boolean): Promise<ProjectInfo> {
 	return invoke<ProjectInfo>("duplicate_project", { path, name, includeLibrary });
 }
+
+export function refreshProjectInfo(): Promise<number> {
+	return invoke<number>("refresh_project_info");
+}

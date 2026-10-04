@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { getSettings, listProjects, listUnityEditors, updateSettings as saveSettings } from "./api";
+import { getSettings, listProjects, listUnityEditors, refreshProjectInfo, updateSettings as saveSettings } from "./api";
 import type { AppSettings, ProjectInfo, SettingsPatch, UnityEditorInfo } from "./api";
 import { errorMessage } from "./format";
 import { applyTheme, loadTheme, loadView, saveTheme, saveView } from "./theme";
@@ -45,6 +45,7 @@ interface AppContextValue {
 	projects: ProjectInfo[];
 	projectsLoading: boolean;
 	refreshProjects: () => Promise<void>;
+	rescanProjects: () => Promise<void>;
 	editors: UnityEditorInfo[];
 	editorsLoading: boolean;
 	editorsError: string | null;
@@ -127,6 +128,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		}
 	}, [notify]);
 
+	const rescanProjects = useCallback(async () => {
+		try {
+			await refreshProjectInfo();
+		} catch (error) {
+			notify("error", errorMessage(error));
+		}
+		await refreshProjects();
+	}, [notify, refreshProjects]);
+
 	const refreshEditors = useCallback(async () => {
 		setEditorsLoading(true);
 		try {
@@ -141,11 +151,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		void refreshProjects();
+		void rescanProjects();
 		void refreshEditors();
 		getSettings()
 			.then(setSettings)
 			.catch((error) => notify("error", errorMessage(error)));
-	}, [refreshProjects, refreshEditors, notify]);
+	}, [refreshProjects, rescanProjects, refreshEditors, notify]);
 
 	const updateSettings = useCallback(
 		async (patch: SettingsPatch) => {
@@ -206,6 +217,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			projects,
 			projectsLoading,
 			refreshProjects,
+			rescanProjects,
 			editors,
 			editorsLoading,
 			editorsError,
@@ -233,6 +245,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			projects,
 			projectsLoading,
 			refreshProjects,
+			rescanProjects,
 			editors,
 			editorsLoading,
 			editorsError,
