@@ -104,12 +104,16 @@ export function ReviewChangesModal({
 						{summary.installs.map((item) => (
 							<li key={item.name} className="change-row">
 								<span className={`tag kind-${item.kind}`}>{installLabels[item.kind]}</span>
-								<strong>{item.displayName}</strong>
-								<span className="muted">
-									{item.previousVersion && item.previousVersion !== item.version
-										? `${item.previousVersion} to ${item.version}`
-										: item.version}
-								</span>
+								<div className="change-name">
+									<span>
+										<PackageLabel name={item.name} displayName={item.displayName} strong />
+									</span>
+									<span className="muted change-note">
+										{item.previousVersion && item.previousVersion !== item.version
+											? `${item.previousVersion} to ${item.version}`
+											: item.version}
+									</span>
+								</div>
 							</li>
 						))}
 					</ul>
