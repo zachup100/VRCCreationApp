@@ -20,4 +20,6 @@ if [ ! -d node_modules ]; then
     npm install
 fi
 
+export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+
 exec npm run tauri dev
