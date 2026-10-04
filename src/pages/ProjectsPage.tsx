@@ -4,6 +4,7 @@ import { useActions } from "../actions";
 import type { ProjectInfo } from "../api";
 import { Button, IconButton } from "../components/Button";
 import { ConfirmModal, EmptyState, SearchInput } from "../components/Controls";
+import { DeleteProjectModal } from "../components/DeleteProjectModal";
 import { FolderDrop } from "../components/FolderDrop";
 import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
@@ -57,6 +58,7 @@ export function ProjectsPage() {
 	const [query, setQuery] = useState("");
 	const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "modified", desc: true });
 	const [pendingRemove, setPendingRemove] = useState<ProjectInfo | null>(null);
+	const [pendingDelete, setPendingDelete] = useState<ProjectInfo | null>(null);
 
 	const visible = useMemo(() => {
 		const needle = query.trim().toLowerCase();
@@ -96,7 +98,10 @@ export function ProjectsPage() {
 			label: "Dangerous Actions",
 			icon: "alert",
 			danger: true,
-			submenu: [{ label: "Remove From List", icon: "trash", danger: true, onSelect: () => setPendingRemove(project) }],
+			submenu: [
+				{ label: "Remove From List", icon: "trash", danger: true, onSelect: () => setPendingRemove(project) },
+				{ label: "Delete Project", icon: "trash", danger: true, disabled: !project.exists, onSelect: () => setPendingDelete(project) },
+			],
 		},
 	];
 
@@ -250,6 +255,13 @@ export function ProjectsPage() {
 
 			<FolderDrop enabled={!packageOperation} onDrop={(paths) => void actions.addPaths(paths)} />
 			{dialogs.element}
+			{pendingDelete && (
+				<DeleteProjectModal
+					project={pendingDelete}
+					onDelete={() => actions.deleteProject(pendingDelete)}
+					onClose={() => setPendingDelete(null)}
+				/>
+			)}
 			{pendingRemove && (
 				<ConfirmModal
 					title="Remove Project"

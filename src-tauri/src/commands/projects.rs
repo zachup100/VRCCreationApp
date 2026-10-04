@@ -149,6 +149,51 @@ pub fn remove_project(
     Ok(())
 }
 
+fn ensure_deletable(path: &Path) -> Result<(), String> {
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|_| "The project folder no longer exists".to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("This project folder is a link, so it will not be deleted from here".to_string());
+    }
+    if !metadata.is_dir() {
+        return Err("The project path is not a folder".to_string());
+    }
+    if path.parent().is_none() {
+        return Err("This folder cannot be deleted".to_string());
+    }
+    if !path.join("Assets").is_dir() || !path.join("ProjectSettings").is_dir() {
+        return Err("This folder does not look like a Unity project, so it was not deleted".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_project(
+    app: AppHandle,
+    path: String,
+    vpm: State<'_, VpmContext>,
+    state: State<'_, Mutex<ProjectStore>>,
+) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
+    {
+        let store = lock(&state)?;
+        if store.find(&path).is_none() {
+            return Err("This project is not in the list".to_string());
+        }
+    }
+    let folder = PathBuf::from(&path);
+    ensure_deletable(&folder)?;
+    let target = folder.clone();
+    tokio::task::spawn_blocking(move || std::fs::remove_dir_all(target))
+        .await
+        .map_err(|_| "Deleting the project was interrupted".to_string())?
+        .map_err(|error| format!("Could not delete the project: {error}"))?;
+    log(&app, "info", format!("Deleted project {}", project_label(&path)));
+    let mut store = lock(&state)?;
+    store.remove(&path);
+    store.save().map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn set_project_favorite(
     path: String,
@@ -367,6 +412,25 @@ pub async fn refresh_project_info(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_real_unity_project_folders_can_be_deleted() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("Proj");
+        std::fs::create_dir_all(project.join("Assets")).unwrap();
+        std::fs::create_dir_all(project.join("ProjectSettings")).unwrap();
+        assert!(ensure_deletable(&project).is_ok());
+
+        let plain = dir.path().join("Docs");
+        std::fs::create_dir_all(plain.join("Assets")).unwrap();
+        assert!(ensure_deletable(&plain).is_err());
+        assert!(ensure_deletable(&dir.path().join("missing")).is_err());
+
+        let file = dir.path().join("file.txt");
+        std::fs::write(&file, "x").unwrap();
+        assert!(ensure_deletable(&file).is_err());
+        assert!(ensure_deletable(Path::new("/")).is_err());
+    }
 
     #[test]
     fn project_types_map_to_the_categories_the_interface_uses() {

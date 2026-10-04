@@ -9,6 +9,7 @@ import {
 	openProject,
 	openProjectFolder,
 	removeProject,
+	deleteProject,
 	setProjectFavorite,
 } from "./api";
 import type { ProjectInfo } from "./api";
@@ -109,6 +110,18 @@ export function useActions() {
 				notify("info", `Removed ${project.name} from the list`);
 				await refreshProjects();
 			}),
+		deleteProject: async (project: ProjectInfo): Promise<boolean> => {
+			try {
+				await deleteProject(project.path);
+				notify("info", `Deleted ${project.name}`);
+				await refreshProjects();
+				return true;
+			} catch (error) {
+				notify("error", errorMessage(error));
+				await refreshProjects();
+				return false;
+			}
+		},
 		toggleFavorite: (project: ProjectInfo) =>
 			guard(async () => {
 				await setProjectFavorite(project.path, !project.favorite);

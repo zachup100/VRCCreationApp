@@ -66,6 +66,10 @@ export function removeProject(path: string): Promise<void> {
 	return invoke<void>("remove_project", { path });
 }
 
+export function deleteProject(path: string): Promise<void> {
+	return invoke<void>("delete_project", { path });
+}
+
 export function setProjectFavorite(path: string, favorite: boolean): Promise<void> {
 	return invoke<void>("set_project_favorite", { path, favorite });
 }

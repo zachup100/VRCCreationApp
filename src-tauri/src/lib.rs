@@ -49,6 +49,7 @@ pub fn run() {
             commands::projects::list_projects,
             commands::projects::add_project,
             commands::projects::remove_project,
+            commands::projects::delete_project,
             commands::projects::set_project_favorite,
             commands::projects::import_from_vcc,
             commands::projects::open_project,
