@@ -1880,3 +1880,86 @@ code {
 	max-height: 260px;
 	overflow-y: auto;
 }
+
+.editor-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.editor-row {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 16px;
+	padding: 14px 18px;
+	border-bottom: 1px solid var(--border);
+	transition: background 0.12s;
+}
+
+.editor-row:last-child {
+	border-bottom: none;
+}
+
+.editor-row:hover {
+	background: var(--surface-hover);
+}
+
+.editor-icon {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+	border-radius: 12px;
+	color: var(--accent-hover);
+}
+
+.editor-info {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	min-width: 0;
+}
+
+.editor-title {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.editor-title strong {
+	font-size: 17px;
+}
+
+.chip {
+	padding: 2px 9px;
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.editor-path {
+	overflow: hidden;
+	font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+	font-size: 12.5px;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.editor-usage {
+	padding: 4px 12px;
+	background: color-mix(in srgb, var(--success) 14%, transparent);
+	border-radius: 999px;
+	font-size: 13px;
+	color: var(--success);
+	white-space: nowrap;
+}
+
+.editor-usage.none {
+	background: var(--surface-raised);
+	color: var(--muted);
+}

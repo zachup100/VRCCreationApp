@@ -113,7 +113,7 @@ function ProjectSettings() {
 }
 
 function GeneralTab() {
-	const { editors, editorsLoading, editorsError, refreshEditors } = useApp();
+	const { editors, editorsLoading, editorsError, refreshEditors, projects } = useApp();
 	const actions = useActions();
 	return (
 		<>
@@ -145,17 +145,29 @@ function GeneralTab() {
 							Install Unity Hub and a Unity editor, then rescan.
 						</EmptyState>
 					) : (
-						<ul className="plain-list">
-							{editors.map((editor) => (
-								<li key={`${editor.version}-${editor.path}`}>
-									<Icon name="unity" size={22} />
-									<div>
-										<strong>{editor.version}</strong>
-										{editor.architecture && <span className="tag">{editor.architecture}</span>}
-										<span className="path">{editor.path}</span>
-									</div>
-								</li>
-							))}
+						<ul className="editor-list">
+							{editors.map((editor) => {
+								const used = projects.filter((project) => project.unityVersion === editor.version).length;
+								return (
+									<li key={`${editor.version}-${editor.path}`} className="editor-row">
+										<span className="editor-icon">
+											<Icon name="unity" size={22} />
+										</span>
+										<div className="editor-info">
+											<div className="editor-title">
+												<strong>{editor.version}</strong>
+												{editor.architecture && <span className="chip">{editor.architecture}</span>}
+											</div>
+											<span className="editor-path" title={editor.path}>
+												{editor.path}
+											</span>
+										</div>
+										<span className={`editor-usage${used === 0 ? " none" : ""}`}>
+											{used === 0 ? "No projects" : `${used} ${used === 1 ? "project" : "projects"}`}
+										</span>
+									</li>
+								);
+							})}
 						</ul>
 					)}
 				</div>
