@@ -276,6 +276,7 @@ export type PresetKind = "world" | "avatar";
 export interface PresetPackage {
 	name: string;
 	version: string | null;
+	displayName?: string | null;
 }
 
 export interface Preset {

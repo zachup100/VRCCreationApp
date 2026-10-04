@@ -1700,3 +1700,71 @@ code {
 .log-warning svg {
 	color: var(--warn);
 }
+
+.hover-anchor {
+	position: relative;
+	display: inline-block;
+}
+
+.count-link {
+	padding: 4px 0;
+	background: none;
+	border: none;
+	border-bottom: 1px dotted var(--muted);
+	color: var(--muted);
+	cursor: default;
+}
+
+.hover-anchor:hover .count-link,
+.count-link:focus-visible {
+	color: var(--text);
+	border-bottom-color: var(--text);
+}
+
+.popover {
+	position: absolute;
+	top: 100%;
+	left: 0;
+	z-index: 35;
+	display: none;
+	min-width: 260px;
+	max-width: 380px;
+	padding-top: 6px;
+}
+
+.popover ul {
+	max-height: 280px;
+	margin: 0;
+	padding: 6px;
+	overflow-y: auto;
+	list-style: none;
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	box-shadow: var(--shadow);
+}
+
+.popover li {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 16px;
+	padding: 6px 10px;
+	border-radius: 6px;
+	font-size: 14px;
+}
+
+.popover li:hover {
+	background: var(--surface-hover);
+}
+
+.popover li span:first-child {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.hover-anchor:hover .popover,
+.hover-anchor:focus-within .popover {
+	display: block;
+}

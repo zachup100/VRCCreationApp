@@ -105,9 +105,13 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 		setSaving(true);
 		setError(null);
 		try {
+			const rows = load.status === "ready" ? load.rows : [];
 			const packages = [...selected].map((packageName) => {
 				const choice = choices[packageName] ?? LATEST;
-				return { name: packageName, version: choice === LATEST ? null : choice };
+				const known = preset?.packages.find((item) => item.name === packageName);
+				const row = rows.find((item) => item.name === packageName);
+				const displayName = row && row.source !== "unavailable" ? row.displayName : (known?.displayName ?? packageName);
+				return { name: packageName, version: choice === LATEST ? null : choice, displayName };
 			});
 			await savePreset({ id: preset?.id ?? null, name: trimmed, kind, packages });
 			notify("success", `Saved preset ${trimmed}`);

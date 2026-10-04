@@ -11,6 +11,8 @@ const FORMAT_VERSION: u32 = 1;
 pub struct PresetPackage {
     pub name: String,
     pub version: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
