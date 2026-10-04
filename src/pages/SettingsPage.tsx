@@ -1,13 +1,15 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { EmptyState, Select, Tabs } from "../components/Controls";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
 import type { Tab } from "../components/Controls";
 import { Icon } from "../components/Icons";
+import type { IconName } from "../components/Icons";
 import { errorMessage } from "../format";
 import type { ThemeChoice, ViewMode } from "../theme";
 
@@ -18,12 +20,42 @@ const tabs: Tab<TabId>[] = [
 	{ id: "appearance", label: "Appearance" },
 ];
 
+function SettingRow({
+	icon,
+	title,
+	description,
+	extra,
+	children,
+}: {
+	icon: IconName;
+	title: string;
+	description: string;
+	extra?: ReactNode;
+	children: ReactNode;
+}) {
+	return (
+		<div className="setting-row">
+			<span className="icon-tile">
+				<Icon name={icon} size={22} />
+			</span>
+			<div className="setting-text">
+				<strong>{title}</strong>
+				<p className="muted">{description}</p>
+				{extra}
+			</div>
+			<div className="setting-control">{children}</div>
+		</div>
+	);
+}
+
 function FolderSetting({
+	icon,
 	title,
 	description,
 	value,
 	onChange,
 }: {
+	icon: IconName;
 	title: string;
 	description: string;
 	value: string | null;
@@ -41,25 +73,21 @@ function FolderSetting({
 		}
 	};
 	return (
-		<div className="setting">
-			<div>
-				<strong>{title}</strong>
-				<p className="muted">{description}</p>
-			</div>
-			<div className="setting-path">
-				<span className="path" title={value ?? ""}>
+		<SettingRow
+			icon={icon}
+			title={title}
+			description={description}
+			extra={
+				<span className={`path-chip${value ? "" : " empty"}`} title={value ?? ""}>
 					{value ?? "Not set"}
 				</span>
-				<Button icon="folderOpen" onClick={() => void pick()}>
-					Pick Folder
-				</Button>
-				{value && (
-					<Button variant="ghost" onClick={() => onChange("")}>
-						Clear
-					</Button>
-				)}
-			</div>
-		</div>
+			}
+		>
+			<Button icon="folderOpen" onClick={() => void pick()}>
+				Pick Folder
+			</Button>
+			{value && <IconButton icon="x" label={`Clear ${title}`} onClick={() => onChange("")} />}
+		</SettingRow>
 	);
 }
 
@@ -72,22 +100,24 @@ function ProjectSettings() {
 			<h2>Projects</h2>
 			<div className="card setting-list">
 				<FolderSetting
+					icon="folder"
 					title="Default Project Location"
 					description="New projects are created here unless you pick another folder."
 					value={settings.defaultProjectLocation}
 					onChange={(folder) => void updateSettings({ defaultProjectLocation: folder })}
 				/>
 				<FolderSetting
+					icon="backups"
 					title="Backup Folder"
-					description="Where project backups will be stored. Used by project backups and migration once they are added."
+					description="Where project backups and the backups made before a migration are saved. When empty, the app's own Backups folder is used."
 					value={settings.backupLocation}
 					onChange={(folder) => void updateSettings({ backupLocation: folder })}
 				/>
-				<div className="setting">
-					<div>
-						<strong>Default Unity Launch Arguments</strong>
-						<p className="muted">Added when opening any project. A project&apos;s own launch options take priority.</p>
-					</div>
+				<SettingRow
+					icon="unity"
+					title="Default Unity Launch Arguments"
+					description="Added when opening any project. A project's own launch options take priority."
+				>
 					<form
 						className="setting-args"
 						onSubmit={(event) => {
@@ -106,7 +136,7 @@ function ProjectSettings() {
 							Save
 						</Button>
 					</form>
-				</div>
+				</SettingRow>
 			</div>
 		</section>
 	);
@@ -174,17 +204,19 @@ function GeneralTab() {
 			</section>
 			<ProjectSettings />
 			<section className="settings-section">
-				<div className="section-head">
-					<div>
-						<h2>VRChat Creator Companion</h2>
-						<p className="muted">Copy your projects, repositories and package folders from an existing VCC install. Your VCC data is only read, never changed.</p>
-					</div>
-					<div className="button-stack">
+				<div>
+					<h2>VRChat Creator Companion</h2>
+					<p className="muted">Bring your setup over from an existing VCC install. Your VCC data is only read, never changed.</p>
+				</div>
+				<div className="card setting-list">
+					<SettingRow icon="download" title="Projects" description="Copy your project list, favorites and last modified dates.">
 						<Button icon="download" onClick={() => void actions.importVcc()}>
 							Import Projects From VCC
 						</Button>
+					</SettingRow>
+					<SettingRow icon="package" title="Packages" description="Copy community repositories, including saved authentication headers, and local package folders.">
 						<ImportPackagesButton />
-					</div>
+					</SettingRow>
 				</div>
 			</section>
 		</>

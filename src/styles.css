@@ -1905,7 +1905,8 @@ code {
 	background: var(--surface-hover);
 }
 
-.editor-icon {
+.editor-icon,
+.icon-tile {
 	display: grid;
 	place-items: center;
 	width: 44px;
@@ -1962,4 +1963,65 @@ code {
 .editor-usage.none {
 	background: var(--surface-raised);
 	color: var(--muted);
+}
+
+.setting-row {
+	display: grid;
+	grid-template-columns: 44px minmax(0, 1fr) auto;
+	align-items: center;
+	gap: 16px;
+	padding: 16px 18px;
+	border-bottom: 1px solid var(--border);
+}
+
+.setting-row:last-child {
+	border-bottom: none;
+}
+
+.setting-text {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.setting-text strong {
+	font-size: 16px;
+}
+
+.setting-text p {
+	font-size: 14px;
+}
+
+.setting-control {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.path-chip {
+	align-self: flex-start;
+	max-width: 100%;
+	margin-top: 6px;
+	padding: 3px 10px;
+	overflow: hidden;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+	font-size: 12.5px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.path-chip.empty {
+	font-family: inherit;
+	font-style: italic;
+	color: var(--muted);
+}
+
+.setting-args input {
+	font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+	font-size: 13px;
 }
