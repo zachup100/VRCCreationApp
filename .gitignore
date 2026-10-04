@@ -1,0 +1,9 @@
+rules.md
+overview.md
+structure.md
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.log
+.DS_Store

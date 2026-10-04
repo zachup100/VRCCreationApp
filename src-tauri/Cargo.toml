@@ -1,0 +1,29 @@
+[package]
+name = "vr-creation-app"
+version = "0.1.0"
+description = "Open-source VCC-alike GUI"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "vr_creation_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+vrc-get-vpm = { git = "https://github.com/vrc-get/vrc-get", rev = "29bb9ea3cb38ece629dbb75999cc591fa5cad755", features = ["experimental-project-management", "experimental-unity-management"] }
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
