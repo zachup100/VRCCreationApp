@@ -159,37 +159,46 @@ async fn load_project(
         .map_err(|error| format!("Could not read the project: {error}"))
 }
 
-async fn plan<'env>(
+async fn plan_installs<'env>(
     project: &UnityProject,
     collection: &'env vrc_get_vpm::environment::PackageCollection,
-    request: &ChangeRequest,
+    installs: &[InstallRequest],
 ) -> Result<PendingProjectChanges<'env>, String> {
-    match (request.installs.is_empty(), request.removes.is_empty()) {
-        (false, true) => {
-            let mut packages = Vec::with_capacity(request.installs.len());
-            for install in &request.installs {
-                let version = Version::from_str(&install.version)
-                    .map_err(|_| format!("Invalid version {}", install.version))?;
-                let package = collection
-                    .find_package_by_name(&install.name, VersionSelector::specific_version(&version))
-                    .ok_or_else(|| format!("{} {} was not found", install.name, install.version))?;
-                packages.push(package);
-            }
-            project
-                .add_package_request(collection, &packages, AddPackageOperation::AutoDetected, false)
-                .await
-                .map_err(|error| error.to_string())
-        }
-        (true, false) => {
-            let names: Vec<&str> = request.removes.iter().map(String::as_str).collect();
-            let changes = project
-                .remove_request(&names)
-                .await
-                .map_err(|error| error.to_string())?;
-            Ok(changes)
-        }
-        _ => Err("Choose packages to install or to remove, not both".to_string()),
+    let mut packages = Vec::with_capacity(installs.len());
+    for install in installs {
+        let version = Version::from_str(&install.version)
+            .map_err(|_| format!("Invalid version {}", install.version))?;
+        let package = collection
+            .find_package_by_name(&install.name, VersionSelector::specific_version(&version))
+            .ok_or_else(|| format!("{} {} was not found", install.name, install.version))?;
+        packages.push(package);
     }
+    project
+        .add_package_request(collection, &packages, AddPackageOperation::AutoDetected, false)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+async fn plan_removes(
+    project: &UnityProject,
+    removes: &[String],
+) -> Result<PendingProjectChanges<'static>, String> {
+    let names: Vec<&str> = removes.iter().map(String::as_str).collect();
+    project
+        .remove_request(&names)
+        .await
+        .map_err(|error| error.to_string())
+}
+
+fn merge(mut first: ChangeSummary, second: ChangeSummary) -> ChangeSummary {
+    first.installs.extend(second.installs);
+    first.removes.extend(second.removes);
+    first.conflicts.extend(second.conflicts);
+    first.legacy_files.extend(second.legacy_files);
+    first.legacy_folders.extend(second.legacy_folders);
+    first.installs.sort_by(|a, b| a.name.cmp(&b.name));
+    first.removes.sort_by(|a, b| a.name.cmp(&b.name));
+    first
 }
 
 #[tauri::command]
@@ -199,11 +208,31 @@ pub async fn project_plan_changes(
     vpm: State<'_, VpmContext>,
     store: State<'_, Mutex<ProjectStore>>,
 ) -> Result<ChangeSummary, String> {
+    if request.installs.is_empty() && request.removes.is_empty() {
+        return Err("No package changes were selected".to_string());
+    }
     let _ops = vpm.ops.lock().await;
     let project = load_project(&path, &store).await?;
     let collection = vpm.collection(false).await?;
-    let changes = plan(&project, &collection, &request).await?;
-    Ok(summarize(&project, &changes))
+
+    let remove_summary = if request.removes.is_empty() {
+        None
+    } else {
+        let changes = plan_removes(&project, &request.removes).await?;
+        Some(summarize(&project, &changes))
+    };
+    let install_summary = if request.installs.is_empty() {
+        None
+    } else {
+        let changes = plan_installs(&project, &collection, &request.installs).await?;
+        Some(summarize(&project, &changes))
+    };
+
+    match (remove_summary, install_summary) {
+        (Some(removes), Some(installs)) => Ok(merge(removes, installs)),
+        (Some(summary), None) | (None, Some(summary)) => Ok(summary),
+        (None, None) => Err("No package changes were selected".to_string()),
+    }
 }
 
 #[tauri::command]
@@ -213,18 +242,37 @@ pub async fn project_apply_changes(
     vpm: State<'_, VpmContext>,
     store: State<'_, Mutex<ProjectStore>>,
 ) -> Result<(), String> {
-    let _ops = vpm.ops.lock().await;
-    let mut project = load_project(&path, &store).await?;
-    let collection = vpm.collection(false).await?;
-    let changes = plan(&project, &collection, &request).await?;
-    if !changes.conflicts().is_empty() {
-        return Err("These changes have conflicts and cannot be applied".to_string());
+    if request.installs.is_empty() && request.removes.is_empty() {
+        return Err("No package changes were selected".to_string());
     }
+    let _ops = vpm.ops.lock().await;
+    let collection = vpm.collection(false).await?;
     let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
-    project
-        .apply_pending_changes(&installer, changes)
-        .await
-        .map_err(|error| format!("Could not apply the changes: {error}"))?;
+
+    if !request.removes.is_empty() {
+        let mut project = load_project(&path, &store).await?;
+        let changes = plan_removes(&project, &request.removes).await?;
+        if !changes.conflicts().is_empty() {
+            return Err("These changes have conflicts and cannot be applied".to_string());
+        }
+        project
+            .apply_pending_changes(&installer, changes)
+            .await
+            .map_err(|error| format!("Could not apply the changes: {error}"))?;
+    }
+
+    if !request.installs.is_empty() {
+        let mut project = load_project(&path, &store).await?;
+        let changes = plan_installs(&project, &collection, &request.installs).await?;
+        if !changes.conflicts().is_empty() {
+            return Err("These changes have conflicts and cannot be applied".to_string());
+        }
+        project
+            .apply_pending_changes(&installer, changes)
+            .await
+            .map_err(|error| format!("Could not apply the changes: {error}"))?;
+    }
+
     let mut store = store
         .lock()
         .map_err(|_| "Project store is unavailable".to_string())?;

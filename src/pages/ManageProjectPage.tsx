@@ -33,18 +33,23 @@ type PackagesState =
 	| { status: "error"; message: string }
 	| { status: "ready"; rows: PackageRow[] };
 
+type StagedChange = { type: "install"; version: string } | { type: "remove" };
+type Staged = Record<string, StagedChange>;
+
 function PackageTable({
 	rows,
 	query,
 	filter,
 	busy,
-	onChange,
+	staged,
+	onStage,
 }: {
 	rows: PackageRow[];
 	query: string;
 	filter: RepoFilter;
 	busy: boolean;
-	onChange: (request: ChangeRequest) => void;
+	staged: Staged;
+	onStage: (name: string, change: StagedChange | null) => void;
 }) {
 	const [targets, setTargets] = useState<Record<string, string>>({});
 	const visible = useMemo(() => {
@@ -70,10 +75,13 @@ function PackageTable({
 		<div className="table-body">
 			{visible.map((row) => {
 				const installed = row.installedVersion !== null;
-				const target = targets[row.name] ?? row.installedVersion ?? row.latestVersion ?? "";
+				const change = staged[row.name];
+				const stagedVersion = change?.type === "install" ? change.version : null;
+				const target = stagedVersion ?? targets[row.name] ?? row.installedVersion ?? row.latestVersion ?? "";
 				const options = row.versions.map((version) => ({ value: version, label: version }));
+				const rowClass = change ? (change.type === "remove" ? " staged-remove" : " staged-install") : "";
 				return (
-					<div key={row.name} className={`row packages${installed ? "" : " not-installed"}`}>
+					<div key={row.name} className={`row packages${installed ? "" : " not-installed"}${rowClass}`}>
 						<div className="pkg-name">
 							<Icon name="package" size={22} />
 							<div>
@@ -86,15 +94,18 @@ function PackageTable({
 								<Select
 									label={`Version of ${row.displayName}`}
 									value={target}
-									disabled={busy}
+									disabled={busy || change?.type === "remove"}
 									options={options}
 									placeholder={installed ? undefined : "Not Installed"}
-									muted={!installed && !(row.name in targets)}
+									muted={!installed && !stagedVersion && !(row.name in targets)}
 									onChange={(version) => {
-										if (installed && version !== row.installedVersion) {
-											onChange({ installs: [{ name: row.name, version }], removes: [] });
+										if (installed) {
+											onStage(row.name, version === row.installedVersion ? null : { type: "install", version });
 										} else {
 											setTargets((current) => ({ ...current, [row.name]: version }));
+											if (change) {
+												onStage(row.name, { type: "install", version });
+											}
 										}
 									}}
 								/>
@@ -112,18 +123,21 @@ function PackageTable({
 						<div className="pkg-action">
 							{installed ? (
 								<IconButton
-									icon="minusCircle"
-									label={`Remove ${row.displayName}`}
-									className="remove"
+									icon={change?.type === "remove" ? "check" : "minusCircle"}
+									label={change?.type === "remove" ? `Keep ${row.displayName}` : `Select ${row.displayName} for removal`}
+									className={`remove${change?.type === "remove" ? " selected" : ""}`}
+									aria-pressed={change?.type === "remove"}
 									disabled={busy}
-									onClick={() => onChange({ installs: [], removes: [row.name] })}
+									onClick={() => onStage(row.name, change?.type === "remove" ? null : { type: "remove" })}
 								/>
 							) : (
 								<IconButton
-									icon="plusCircle"
-									label={`Install ${row.displayName}`}
+									icon={change?.type === "install" ? "check" : "plusCircle"}
+									label={change?.type === "install" ? `Unselect ${row.displayName}` : `Select ${row.displayName} for install`}
+									className={change?.type === "install" ? "add selected" : "add"}
+									aria-pressed={change?.type === "install"}
 									disabled={busy || !target}
-									onClick={() => onChange({ installs: [{ name: row.name, version: target }], removes: [] })}
+									onClick={() => onStage(row.name, change?.type === "install" ? null : { type: "install", version: target })}
 								/>
 							)}
 						</div>
@@ -143,6 +157,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 	const [refreshing, setRefreshing] = useState(false);
 	const [review, setReview] = useState<{ request: ChangeRequest; summary: ChangeSummary } | null>(null);
 	const [working, setWorking] = useState(false);
+	const [staged, setStaged] = useState<Staged>({});
 	const project = projects.find((item) => item.path === path);
 	const projectExists = project?.exists ?? false;
 
@@ -164,6 +179,25 @@ export function ManageProjectPage({ path }: { path: string }) {
 		[path, notify],
 	);
 
+	const stageChange = (name: string, change: StagedChange | null) => {
+		setStaged((current) => {
+			const next = { ...current };
+			if (change) {
+				next[name] = change;
+			} else {
+				delete next[name];
+			}
+			return next;
+		});
+	};
+
+	const stagedCount = Object.keys(staged).length;
+
+	const stagedRequest = (): ChangeRequest => ({
+		installs: Object.entries(staged).flatMap(([name, change]) => (change.type === "install" ? [{ name, version: change.version }] : [])),
+		removes: Object.entries(staged).flatMap(([name, change]) => (change.type === "remove" ? [name] : [])),
+	});
+
 	const plan = async (request: ChangeRequest) => {
 		setWorking(true);
 		try {
@@ -184,6 +218,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			await projectApplyChanges(path, review.request);
 			notify("success", "Package changes applied");
 			setReview(null);
+			setStaged({});
 			await load(false);
 		} catch (error) {
 			notify("error", errorMessage(error));
@@ -274,7 +309,8 @@ export function ManageProjectPage({ path }: { path: string }) {
 					<Button
 						variant="success"
 						icon="upload"
-						disabled={working}
+						disabled={working || stagedCount > 0}
+						title={stagedCount > 0 ? "Submit or cancel your selection first" : undefined}
 						onClick={() =>
 							void plan({
 								installs: updatable.map((row) => ({ name: row.name, version: row.latestVersion ?? "" })),
@@ -321,9 +357,22 @@ export function ManageProjectPage({ path }: { path: string }) {
 					</EmptyState>
 				)}
 				{packages.status === "ready" && (
-					<PackageTable rows={packages.rows} query={query} filter={filter} busy={working} onChange={(request) => void plan(request)} />
+					<PackageTable rows={packages.rows} query={query} filter={filter} busy={working} staged={staged} onStage={stageChange} />
 				)}
 			</div>
+			{stagedCount > 0 && !review && (
+				<div className="selection-bar" role="status">
+					<span>
+						{stagedCount} package {stagedCount === 1 ? "change" : "changes"}
+					</span>
+					<Button variant="ghost" disabled={working} onClick={() => setStaged({})}>
+						Cancel
+					</Button>
+					<Button variant="primary" disabled={working} onClick={() => void plan(stagedRequest())}>
+						Submit
+					</Button>
+				</div>
+			)}
 			{review && (
 				<ReviewChangesModal summary={review.summary} busy={working} onApply={() => void apply()} onClose={() => setReview(null)} />
 			)}

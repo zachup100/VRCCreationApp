@@ -1344,3 +1344,50 @@ code {
 .select-trigger.muted {
 	color: var(--muted);
 }
+
+.row.staged-install {
+	background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.row.staged-remove {
+	background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.icon-btn.add.selected {
+	background: var(--accent);
+	color: var(--accent-text);
+}
+
+.icon-btn.remove.selected {
+	background: var(--danger);
+	color: #1b1b1c;
+}
+
+.selection-bar {
+	position: fixed;
+	bottom: 24px;
+	left: calc(50% + 95px);
+	transform: translateX(-50%);
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px 10px 20px;
+	background: var(--surface-raised);
+	border: 1px solid var(--border);
+	border-radius: 12px;
+	box-shadow: var(--shadow);
+	font-weight: 600;
+	animation: bar-in 0.18s ease-out;
+}
+
+.selection-bar span {
+	margin-right: 14px;
+}
+
+@keyframes bar-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, 10px);
+	}
+}
