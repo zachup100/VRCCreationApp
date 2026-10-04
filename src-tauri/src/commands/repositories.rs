@@ -528,3 +528,59 @@ pub async fn import_packages_from_vcc(
     }
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn header(name: &str, value: &str) -> HeaderInput {
+        HeaderInput {
+            name: name.to_string(),
+            value: value.to_string(),
+        }
+    }
+
+    #[test]
+    fn valid_headers_are_trimmed_and_kept_in_order() {
+        let map = header_map(&[header(" Authorization ", "Bearer abc"), header("X-Token", "1")]).unwrap();
+        let keys: Vec<&str> = map.keys().map(|key| key.as_ref()).collect();
+        assert_eq!(keys, vec!["Authorization", "X-Token"]);
+        assert_eq!(map.get("Authorization").map(|value| value.as_ref()), Some("Bearer abc"));
+    }
+
+    #[test]
+    fn invalid_header_names_and_values_are_rejected() {
+        assert!(header_map(&[header("bad name", "x")]).is_err());
+        assert!(header_map(&[header("", "x")]).is_err());
+        assert!(header_map(&[header("X-Ok", "line\nbreak")]).is_err());
+    }
+
+    #[test]
+    fn too_many_headers_are_rejected() {
+        let many: Vec<HeaderInput> = (0..11).map(|index| header(&format!("X-{index}"), "v")).collect();
+        assert!(header_map(&many).is_err());
+        assert!(header_map(&many[..10]).is_ok());
+    }
+
+    #[test]
+    fn only_http_and_https_urls_with_a_host_are_accepted() {
+        assert!(parse_http_url("https://example.github.io/vpm/index.json").is_some());
+        assert!(parse_http_url("  http://example.com/x  ").is_some());
+        assert!(parse_http_url("ftp://example.com/x").is_none());
+        assert!(parse_http_url("file:///etc/passwd").is_none());
+        assert!(parse_http_url("not a url").is_none());
+        assert!(parse_http_url("").is_none());
+    }
+
+    #[test]
+    fn the_author_can_be_a_string_or_an_object() {
+        let string: Map<String, Value> = serde_json::from_str(r#"{"author":"Someone"}"#).unwrap();
+        assert_eq!(author_of(&string).as_deref(), Some("Someone"));
+        let object: Map<String, Value> = serde_json::from_str(r#"{"author":{"name":"Named","url":"x"}}"#).unwrap();
+        assert_eq!(author_of(&object).as_deref(), Some("Named"));
+        let empty: Map<String, Value> = serde_json::from_str(r#"{"author":""}"#).unwrap();
+        assert_eq!(author_of(&empty), None);
+        let missing: Map<String, Value> = serde_json::from_str("{}").unwrap();
+        assert_eq!(author_of(&missing), None);
+    }
+}

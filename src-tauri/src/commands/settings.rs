@@ -76,3 +76,33 @@ pub fn update_settings(
     prefs.save().map_err(|error| error.to_string())?;
     Ok(result)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_value_clears_the_setting() {
+        assert_eq!(folder_setting("", "folder").unwrap(), None);
+        assert_eq!(folder_setting("   ", "folder").unwrap(), None);
+    }
+
+    #[test]
+    fn relative_and_missing_folders_are_rejected() {
+        assert!(folder_setting("relative/path", "folder").is_err());
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing");
+        assert!(folder_setting(&missing.to_string_lossy(), "folder").is_err());
+        let file = dir.path().join("file.txt");
+        std::fs::write(&file, "x").unwrap();
+        assert!(folder_setting(&file.to_string_lossy(), "folder").is_err());
+    }
+
+    #[test]
+    fn an_existing_folder_is_stored_without_a_trailing_separator() {
+        let dir = tempfile::tempdir().unwrap();
+        let with_slash = format!("{}/", dir.path().to_string_lossy());
+        let stored = folder_setting(&with_slash, "folder").unwrap().unwrap();
+        assert_eq!(stored, dir.path().to_string_lossy());
+    }
+}

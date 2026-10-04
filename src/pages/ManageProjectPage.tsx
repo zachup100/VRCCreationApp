@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
-import { projectApplyChanges, projectPackages, projectPlanChanges } from "../api";
+import { projectApplyChanges, projectCleanupManifest, projectPackages, projectPlanChanges } from "../api";
 import type { ChangeRequest, ChangeSummary, PackageRow } from "../api";
 import { Button, IconButton } from "../components/Button";
-import { EmptyState, Select, SearchInput } from "../components/Controls";
+import { ConfirmModal, EmptyState, Select, SearchInput } from "../components/Controls";
 import { ReviewChangesModal } from "../components/ReviewChangesModal";
 import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
@@ -17,7 +17,7 @@ import type { RepoFilter } from "../packageUi";
 type PackagesState =
 	| { status: "loading" }
 	| { status: "error"; message: string }
-	| { status: "ready"; rows: PackageRow[]; missing: string[] };
+	| { status: "ready"; rows: PackageRow[]; missing: string[]; redundant: string[] };
 
 type StagedChange = { type: "install"; version: string } | { type: "remove" };
 type Staged = Record<string, StagedChange>;
@@ -154,6 +154,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 	const [refreshing, setRefreshing] = useState(false);
 	const [review, setReview] = useState<{ request: ChangeRequest; summary: ChangeSummary } | null>(null);
 	const [working, setWorking] = useState(false);
+	const [confirmCleanup, setConfirmCleanup] = useState(false);
 	const [staged, setStaged] = useState<Staged>({});
 	const project = projects.find((item) => item.path === path);
 	const projectExists = project?.exists ?? false;
@@ -163,7 +164,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			setRefreshing(true);
 			try {
 				const result = await projectPackages(path, refresh);
-				setPackages({ status: "ready", rows: result.rows, missing: result.missing });
+				setPackages({ status: "ready", rows: result.rows, missing: result.missing, redundant: result.redundant });
 				if (refresh) {
 					notify("success", "Package listings refreshed");
 				}
@@ -230,6 +231,20 @@ export function ManageProjectPage({ path }: { path: string }) {
 	};
 
 	const missing = packages.status === "ready" ? packages.missing : [];
+	const redundant = packages.status === "ready" ? packages.redundant : [];
+
+	const cleanup = async () => {
+		setWorking(true);
+		try {
+			const removed = await projectCleanupManifest(path);
+			notify("success", `Removed ${removed.length} redundant ${removed.length === 1 ? "entry" : "entries"}`);
+			await load(false);
+		} catch (error) {
+			notify("error", errorMessage(error));
+		} finally {
+			setWorking(false);
+		}
+	};
 	const updatable = packages.status === "ready" ? packages.rows.filter((row) => row.hasUpdate && row.latestVersion) : [];
 
 	useEffect(() => {
@@ -303,6 +318,29 @@ export function ManageProjectPage({ path }: { path: string }) {
 						Resolve Packages
 					</Button>
 				</div>
+			)}
+			{redundant.length > 0 && project.exists && (
+				<div className="notice warn">
+					<span>
+						{redundant.length} {redundant.length === 1 ? "entry" : "entries"} in this project's package list ({redundant.join(", ")}) {redundant.length === 1 ? "is" : "are"} already included in an installed package and
+						{redundant.length === 1 ? " was" : " were"} never installed. They can be cleaned up safely.
+					</span>
+					<Button variant="success" icon="trash" disabled={working || stagedCount > 0} onClick={() => setConfirmCleanup(true)}>
+						Clean Up
+					</Button>
+				</div>
+			)}
+			{confirmCleanup && (
+				<ConfirmModal
+					title="Clean Up Package List"
+					confirmLabel="Clean Up"
+					onClose={() => setConfirmCleanup(false)}
+					onConfirm={() => void cleanup()}
+				>
+					<p>
+						Remove {redundant.join(", ")} from this project's vpm-manifest.json? No package files are deleted, because these entries were never installed.
+					</p>
+				</ConfirmModal>
 			)}
 			{!canOpen && (
 				<div className="notice warn">

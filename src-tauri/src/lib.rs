@@ -2,6 +2,7 @@ mod applog;
 mod args;
 mod commands;
 mod download;
+mod manifest;
 mod prefs;
 mod presets;
 mod prereq;
@@ -69,6 +70,7 @@ pub fn run() {
             commands::create::create_project,
             commands::changes::project_plan_changes,
             commands::changes::project_apply_changes,
+            commands::changes::project_cleanup_manifest,
             commands::repositories::repositories_info,
             commands::repositories::repository_preview,
             commands::repositories::repository_add,

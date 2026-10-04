@@ -1,4 +1,5 @@
 use crate::applog::{log, project_label};
+use crate::commands::packages::redundant_dependencies;
 use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::store::ProjectStore;
@@ -401,4 +402,79 @@ pub async fn project_apply_changes(
         .map_err(|_| "Project store is unavailable".to_string())?;
     store.touch(&path);
     store.save().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn project_cleanup_manifest(
+    app: AppHandle,
+    path: String,
+    vpm: State<'_, VpmContext>,
+    store: State<'_, Mutex<ProjectStore>>,
+) -> Result<Vec<String>, String> {
+    let _ops = vpm.try_busy()?;
+    let project = load_project(&path, &store).await?;
+    let names = redundant_dependencies(&project);
+    if names.is_empty() {
+        return Ok(names);
+    }
+    let manifest_path = std::path::Path::new(&path).join("Packages").join("vpm-manifest.json");
+    let text = tokio::fs::read_to_string(&manifest_path)
+        .await
+        .map_err(|error| format!("Could not read vpm-manifest.json: {error}"))?;
+    let updated = crate::manifest::remove_dependency_entries(&text, &names)?;
+    let temp = manifest_path.with_extension("json.tmp");
+    tokio::fs::write(&temp, updated)
+        .await
+        .map_err(|error| format!("Could not write vpm-manifest.json: {error}"))?;
+    tokio::fs::rename(&temp, &manifest_path)
+        .await
+        .map_err(|error| format!("Could not update vpm-manifest.json: {error}"))?;
+    log(
+        &app,
+        "success",
+        format!("{}: removed redundant entries {}", project_label(&path), names.join(", ")),
+    );
+    Ok(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(json: &str) -> ChangeRequest {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn an_empty_request_is_rejected() {
+        assert!(request(r#"{"installs":[],"removes":[]}"#).validate().is_err());
+        assert!(request("{}").validate().is_err());
+    }
+
+    #[test]
+    fn installs_and_removes_may_be_combined() {
+        let mixed = request(r#"{"installs":[{"name":"a","version":"1.0.0"}],"removes":["b"]}"#);
+        assert!(mixed.validate().is_ok());
+        assert!(!mixed.is_repair());
+    }
+
+    #[test]
+    fn repairs_cannot_be_combined_with_other_changes() {
+        assert!(request(r#"{"resolve":true}"#).validate().is_ok());
+        assert!(request(r#"{"reinstall":["a"]}"#).validate().is_ok());
+        assert!(request(r#"{"resolve":true}"#).is_repair());
+        assert!(request(r#"{"resolve":true,"installs":[{"name":"a","version":"1.0.0"}]}"#).validate().is_err());
+        assert!(request(r#"{"reinstall":["a"],"removes":["b"]}"#).validate().is_err());
+        assert!(request(r#"{"resolve":true,"reinstall":["a"]}"#).validate().is_err());
+    }
+
+    #[test]
+    fn descriptions_name_what_changed() {
+        assert_eq!(describe(&request(r#"{"resolve":true}"#)), "resolved the project's packages");
+        assert_eq!(describe(&request(r#"{"reinstall":["a","b"]}"#)), "reinstalled a, b");
+        assert_eq!(
+            describe(&request(r#"{"installs":[{"name":"a","version":"1.0.0"}],"removes":["b","c"]}"#)),
+            "removed b, c; installed a 1.0.0"
+        );
+    }
 }

@@ -133,6 +133,7 @@ export interface ProjectPackages {
 	unityVersion: string;
 	rows: PackageRow[];
 	missing: string[];
+	redundant: string[];
 }
 
 export function projectPackages(path: string, refresh: boolean): Promise<ProjectPackages> {
@@ -343,4 +344,8 @@ export function getLogs(): Promise<BackendLogEntry[]> {
 
 export function clearBackendLogs(): Promise<void> {
 	return invoke<void>("clear_logs");
+}
+
+export function projectCleanupManifest(path: string): Promise<string[]> {
+	return invoke<string[]>("project_cleanup_manifest", { path });
 }

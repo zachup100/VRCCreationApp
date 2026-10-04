@@ -68,9 +68,11 @@ fn lock<'a>(
 }
 
 #[tauri::command]
-pub fn list_projects(state: State<'_, Mutex<ProjectStore>>) -> Result<Vec<ProjectInfo>, String> {
-    let store = lock(&state)?;
-    let mut projects: Vec<ProjectInfo> = store.projects().iter().map(to_info).collect();
+pub async fn list_projects(state: State<'_, Mutex<ProjectStore>>) -> Result<Vec<ProjectInfo>, String> {
+    let stored: Vec<StoredProject> = lock(&state)?.projects().to_vec();
+    let mut projects: Vec<ProjectInfo> = tokio::task::spawn_blocking(move || stored.iter().map(to_info).collect())
+        .await
+        .map_err(|_| "Could not read the project list".to_string())?;
     projects.sort_by(|a, b| {
         b.favorite
             .cmp(&a.favorite)
@@ -297,4 +299,22 @@ pub async fn open_project_folder(
         .await
         .map_err(|_| "Could not open the folder".to_string())?
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_types_map_to_the_categories_the_interface_uses() {
+        assert_eq!(category_of(ProjectType::Avatars), "avatar");
+        assert_eq!(category_of(ProjectType::UpmAvatars), "avatar");
+        assert_eq!(category_of(ProjectType::Worlds), "world");
+        assert_eq!(category_of(ProjectType::UpmWorlds), "world");
+        assert_eq!(category_of(ProjectType::LegacyAvatars), "legacy-avatar");
+        assert_eq!(category_of(ProjectType::LegacyWorlds), "legacy-world");
+        assert_eq!(category_of(ProjectType::LegacySdk2), "legacy-world");
+        assert_eq!(category_of(ProjectType::Unknown), "other");
+        assert_eq!(category_of(ProjectType::VpmStarter), "other");
+    }
 }

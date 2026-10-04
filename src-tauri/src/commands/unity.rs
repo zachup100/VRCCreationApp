@@ -40,8 +40,7 @@ pub async fn list_unity_editors() -> Result<Vec<UnityEditorInfo>, String> {
     Ok(result)
 }
 
-#[tauri::command]
-pub async fn open_external(url: String) -> Result<(), String> {
+pub(crate) fn check_allowed(url: &str) -> Result<(), String> {
     let rest = url
         .strip_prefix("https://")
         .ok_or_else(|| "Only https links can be opened".to_string())?;
@@ -49,8 +48,43 @@ pub async fn open_external(url: String) -> Result<(), String> {
     if !ALLOWED_HOSTS.contains(&host) {
         return Err("This link is not on the allowed list".to_string());
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_external(url: String) -> Result<(), String> {
+    check_allowed(&url)?;
     tokio::task::spawn_blocking(move || open::that_detached(url))
         .await
         .map_err(|_| "Could not open the link".to_string())?
         .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allowed_https_links_pass() {
+        assert!(check_allowed("https://unity.com/download").is_ok());
+        assert!(check_allowed("https://creators.vrchat.com").is_ok());
+        assert!(check_allowed("https://github.com?tab=readme").is_ok());
+        assert!(check_allowed("https://vcc.docs.vrchat.com/vpm#section").is_ok());
+    }
+
+    #[test]
+    fn plain_http_and_other_schemes_are_rejected() {
+        assert!(check_allowed("http://unity.com/download").is_err());
+        assert!(check_allowed("file:///etc/passwd").is_err());
+        assert!(check_allowed("javascript:alert(1)").is_err());
+        assert!(check_allowed("unity.com").is_err());
+    }
+
+    #[test]
+    fn look_alike_hosts_are_rejected() {
+        assert!(check_allowed("https://evil.com/").is_err());
+        assert!(check_allowed("https://unity.com.evil.com/").is_err());
+        assert!(check_allowed("https://unity.com@evil.com/").is_err());
+        assert!(check_allowed("https://evil.com/unity.com").is_err());
+    }
 }

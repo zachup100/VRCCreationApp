@@ -91,7 +91,7 @@ pub(crate) fn safe_file_name(name: &str) -> String {
         .collect()
 }
 
-fn collect_files(
+pub(crate) fn collect_files(
     root: &Path,
     relative: &Path,
     files: &mut Vec<(PathBuf, String)>,
@@ -125,8 +125,8 @@ fn collect_files(
     Ok(())
 }
 
-fn write_backup(
-    app: &AppHandle,
+pub(crate) fn write_backup(
+    progress: &mut dyn FnMut(usize, usize),
     project: &Path,
     target: &Path,
     unity_version: Option<String>,
@@ -155,7 +155,7 @@ fn write_backup(
                 .map_err(|error| format!("Could not write the backup: {error}"))?;
             bytes += std::io::copy(&mut source, &mut writer).map_err(|error| format!("Could not write the backup: {error}"))?;
             if index % 25 == 0 || index + 1 == total {
-                emit(app, TaskProgress::Backup { done: index + 1, total });
+                progress(index + 1, total);
             }
         }
         let meta = BackupMeta {
@@ -220,7 +220,10 @@ async fn create_backup(
     emit(app, TaskProgress::Phase { name: "backup" });
     let handle = app.clone();
     let source = project.to_path_buf();
-    tokio::task::spawn_blocking(move || write_backup(&handle, &source, &target, unity_version, category))
+    tokio::task::spawn_blocking(move || {
+        let mut report = |done: usize, total: usize| emit(&handle, TaskProgress::Backup { done, total });
+        write_backup(&mut report, &source, &target, unity_version, category)
+    })
         .await
         .map_err(|_| "The backup was interrupted".to_string())?
 }
@@ -393,4 +396,102 @@ pub async fn migrate_project(
     store.update_info(&path, Some(refreshed.unity_version().to_string()), category);
     store.save().map_err(|error| error.to_string())?;
     Ok(backup_result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(root: &Path, relative: &str, contents: &str) {
+        let path = root.join(relative);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, contents).unwrap();
+    }
+
+    fn sample_project(root: &Path) {
+        write(root, "Assets/a.txt", "asset");
+        write(root, "Assets/Library/keep.txt", "nested library folders are kept");
+        write(root, "Packages/vpm-manifest.json", "{}");
+        write(root, "ProjectSettings/ProjectVersion.txt", "m_EditorVersion: 2022.3.22f1\n");
+        write(root, "Project.sln", "solution");
+        write(root, "Library/cache.bin", "excluded");
+        write(root, "LibraryBackup/cache.bin", "excluded");
+        write(root, "Temp/t.txt", "excluded");
+        write(root, "Logs/l.txt", "excluded");
+        write(root, "obj/o.txt", "excluded");
+        write(root, ".git/config", "excluded");
+        write(root, "Assets/.git/config", "excluded");
+    }
+
+    fn collected(root: &Path) -> Vec<String> {
+        let mut files = Vec::new();
+        collect_files(root, Path::new(""), &mut files).unwrap();
+        let mut names: Vec<String> = files.into_iter().map(|(_, name)| name).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn safe_file_name_replaces_reserved_characters() {
+        assert_eq!(safe_file_name("a:b/c*d"), "a_b_c_d");
+        assert_eq!(safe_file_name("Plain Name"), "Plain Name");
+    }
+
+    #[test]
+    fn caches_and_version_control_are_left_out_of_backups() {
+        let dir = tempfile::tempdir().unwrap();
+        sample_project(dir.path());
+        assert_eq!(
+            collected(dir.path()),
+            vec![
+                "Assets/Library/keep.txt",
+                "Assets/a.txt",
+                "Packages/vpm-manifest.json",
+                "Project.sln",
+                "ProjectSettings/ProjectVersion.txt",
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlinks_are_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "Assets/a.txt", "asset");
+        std::os::unix::fs::symlink(dir.path().join("Assets/a.txt"), dir.path().join("Assets/link.txt")).unwrap();
+        assert_eq!(collected(dir.path()), vec!["Assets/a.txt"]);
+    }
+
+    #[test]
+    fn a_backup_contains_the_project_under_its_folder_name_with_a_marker() {
+        let parent = tempfile::tempdir().unwrap();
+        let project = parent.path().join("My Project");
+        sample_project(&project);
+        let target = parent.path().join("backup.zip");
+        let mut reports = Vec::new();
+        let mut report = |done: usize, total: usize| reports.push((done, total));
+        let result = write_backup(&mut report, &project, &target, Some("2022.3.22f1".to_string()), "world".to_string()).unwrap();
+        assert_eq!(result.files, 5);
+        assert!(result.bytes > 0);
+        assert_eq!(reports.last().copied(), Some((5, 5)));
+
+        let mut archive = zip::ZipArchive::new(std::io::BufReader::new(File::open(&target).unwrap())).unwrap();
+        let meta: BackupMeta = serde_json::from_slice(archive.comment()).unwrap();
+        assert_eq!(meta.app, BACKUP_MARKER);
+        assert_eq!(meta.project_name, "My Project");
+        assert_eq!(meta.category, "world");
+        assert_eq!(meta.unity_version.as_deref(), Some("2022.3.22f1"));
+        assert!(archive.by_name("My Project/Assets/a.txt").is_ok());
+        assert!(archive.by_name("My Project/Library/cache.bin").is_err());
+    }
+
+    #[test]
+    fn a_failed_backup_leaves_no_partial_file() {
+        let parent = tempfile::tempdir().unwrap();
+        let missing = parent.path().join("does-not-exist");
+        let target = parent.path().join("backup.zip");
+        let mut report = |_: usize, _: usize| {};
+        assert!(write_backup(&mut report, &missing, &target, None, "other".to_string()).is_err());
+        assert!(!target.exists());
+    }
 }

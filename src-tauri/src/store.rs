@@ -176,3 +176,103 @@ impl ProjectStore {
         fs::rename(&temp, self.folder.join(FILE_NAME))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn project(path: &str) -> StoredProject {
+        StoredProject {
+            path: path.to_string(),
+            unity_version: Some("2022.3.22f1".to_string()),
+            category: "world".to_string(),
+            favorite: false,
+            added_at: 1,
+            last_modified: 1,
+            launch_args: None,
+        }
+    }
+
+    #[test]
+    fn path_key_ignores_trailing_separators() {
+        assert_eq!(path_key("/a/b/"), path_key("/a/b"));
+        assert_eq!(path_key("/a/b\\"), path_key("/a/b"));
+    }
+
+    #[test]
+    fn inserting_the_same_path_twice_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ProjectStore::load(dir.path().to_path_buf());
+        assert!(store.insert(project("/p/one")));
+        assert!(!store.insert(project("/p/one")));
+        assert!(!store.insert(project("/p/one/")));
+        assert_eq!(store.projects().len(), 1);
+    }
+
+    #[test]
+    fn remove_and_find_use_normalised_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ProjectStore::load(dir.path().to_path_buf());
+        store.insert(project("/p/one"));
+        assert!(store.find("/p/one/").is_some());
+        assert!(store.contains("/p/one"));
+        assert!(store.remove("/p/one/"));
+        assert!(!store.remove("/p/one"));
+        assert!(store.find("/p/one").is_none());
+    }
+
+    #[test]
+    fn updates_change_only_the_matching_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ProjectStore::load(dir.path().to_path_buf());
+        store.insert(project("/p/one"));
+        store.insert(project("/p/two"));
+        assert!(store.set_favorite("/p/one", true));
+        assert!(!store.set_favorite("/p/missing", true));
+        assert!(store.set_launch_args("/p/two", Some("-x".to_string())));
+        store.update_info("/p/two", Some("2019.4.31f1".to_string()), "avatar".to_string());
+        assert!(store.find("/p/one").unwrap().favorite);
+        assert!(!store.find("/p/two").unwrap().favorite);
+        assert_eq!(store.find("/p/two").unwrap().launch_args.as_deref(), Some("-x"));
+        assert_eq!(store.find("/p/two").unwrap().unity_version.as_deref(), Some("2019.4.31f1"));
+        assert_eq!(store.find("/p/two").unwrap().category, "avatar");
+        assert_eq!(store.find("/p/one").unwrap().category, "world");
+    }
+
+    #[test]
+    fn saved_projects_load_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = ProjectStore::load(dir.path().to_path_buf());
+        store.insert(project("/p/one"));
+        store.set_launch_args("/p/one", Some("-a -b".to_string()));
+        store.save().unwrap();
+        let loaded = ProjectStore::load(dir.path().to_path_buf());
+        assert_eq!(loaded.projects().len(), 1);
+        assert_eq!(loaded.projects()[0].path, "/p/one");
+        assert_eq!(loaded.projects()[0].launch_args.as_deref(), Some("-a -b"));
+        assert!(!dir.path().join("projects.json.tmp").exists());
+    }
+
+    #[test]
+    fn older_files_without_launch_args_still_load() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("projects.json"),
+            r#"{"version":1,"projects":[{"path":"/p/one","unityVersion":null,"category":"other","favorite":false,"addedAt":1,"lastModified":2}]}"#,
+        )
+        .unwrap();
+        let store = ProjectStore::load(dir.path().to_path_buf());
+        assert_eq!(store.projects().len(), 1);
+        assert!(store.projects()[0].launch_args.is_none());
+    }
+
+    #[test]
+    fn a_corrupt_file_is_set_aside_and_an_empty_store_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("projects.json"), "this is not json").unwrap();
+        let store = ProjectStore::load(dir.path().to_path_buf());
+        assert!(store.projects().is_empty());
+        assert!(dir.path().join("projects.json.corrupt").exists());
+        assert!(!dir.path().join("projects.json").exists());
+    }
+}

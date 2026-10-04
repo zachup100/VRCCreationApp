@@ -106,3 +106,88 @@ impl PresetStore {
         fs::rename(&temp, self.folder.join(FILE_NAME))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn preset(id: &str, name: &str, kind: &str) -> Preset {
+        Preset {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: kind.to_string(),
+            packages: vec![PresetPackage {
+                name: "com.example.pkg".to_string(),
+                version: None,
+                display_name: Some("Example".to_string()),
+            }],
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn names_are_unique_per_kind_ignoring_case() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = PresetStore::load(dir.path().to_path_buf());
+        store.upsert(preset("1", "My Setup", "world"));
+        assert!(store.name_taken("world", "my setup", None));
+        assert!(!store.name_taken("avatar", "my setup", None));
+        assert!(!store.name_taken("world", "my setup", Some("1")));
+        assert!(!store.name_taken("world", "other", None));
+    }
+
+    #[test]
+    fn upsert_replaces_an_existing_preset() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = PresetStore::load(dir.path().to_path_buf());
+        store.upsert(preset("1", "First", "world"));
+        store.upsert(preset("1", "Renamed", "world"));
+        assert_eq!(store.list().len(), 1);
+        assert_eq!(store.find("1").unwrap().name, "Renamed");
+    }
+
+    #[test]
+    fn remove_reports_whether_something_was_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = PresetStore::load(dir.path().to_path_buf());
+        store.upsert(preset("1", "First", "world"));
+        assert!(store.remove("1"));
+        assert!(!store.remove("1"));
+        assert!(store.list().is_empty());
+    }
+
+    #[test]
+    fn saved_presets_load_back_with_display_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = PresetStore::load(dir.path().to_path_buf());
+        store.upsert(preset("1", "First", "avatar"));
+        store.save().unwrap();
+        let loaded = PresetStore::load(dir.path().to_path_buf());
+        assert_eq!(loaded.list().len(), 1);
+        assert_eq!(loaded.list()[0].kind, "avatar");
+        assert_eq!(loaded.list()[0].packages[0].display_name.as_deref(), Some("Example"));
+    }
+
+    #[test]
+    fn presets_saved_before_display_names_existed_still_load() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("presets.json"),
+            r#"{"version":1,"presets":[{"id":"1","name":"Old","kind":"world","packages":[{"name":"a","version":null}],"createdAt":1,"updatedAt":1}]}"#,
+        )
+        .unwrap();
+        let store = PresetStore::load(dir.path().to_path_buf());
+        assert_eq!(store.list().len(), 1);
+        assert!(store.list()[0].packages[0].display_name.is_none());
+    }
+
+    #[test]
+    fn a_corrupt_file_is_set_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("presets.json"), "{").unwrap();
+        let store = PresetStore::load(dir.path().to_path_buf());
+        assert!(store.list().is_empty());
+        assert!(dir.path().join("presets.json.corrupt").exists());
+    }
+}

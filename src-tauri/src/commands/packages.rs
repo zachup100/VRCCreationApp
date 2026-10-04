@@ -29,6 +29,7 @@ pub struct ProjectPackages {
     unity_version: String,
     rows: Vec<PackageRow>,
     missing: Vec<String>,
+    redundant: Vec<String>,
 }
 
 #[derive(Default)]
@@ -54,6 +55,22 @@ impl Accumulator {
             ("local", None)
         }
     }
+}
+
+pub(crate) fn redundant_dependencies(project: &UnityProject) -> Vec<String> {
+    let mut provided: HashSet<String> = HashSet::new();
+    for manifest in project.all_installed_packages() {
+        for legacy in manifest.legacy_packages() {
+            provided.insert(legacy.to_string());
+        }
+    }
+    let mut names: Vec<String> = project
+        .dependencies()
+        .filter(|name| !project.is_locked(name) && provided.contains(*name))
+        .map(str::to_string)
+        .collect();
+    names.sort();
+    names
 }
 
 pub(crate) fn hidden_ids(prefs: &Mutex<Prefs>) -> Result<HashSet<String>, String> {
@@ -227,5 +244,30 @@ pub async fn project_packages(
         unity_version: unity.to_string(),
         rows,
         missing,
+        redundant: redundant_dependencies(&project),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_package_with_no_known_repository_counts_as_local() {
+        assert_eq!(Accumulator::default().classify(), ("local", None));
+    }
+
+    #[test]
+    fn official_beats_curated_beats_community_beats_local() {
+        let mut accumulator = Accumulator {
+            local: true,
+            community: vec!["Community Repo".to_string(), "Other".to_string()],
+            ..Accumulator::default()
+        };
+        assert_eq!(accumulator.classify(), ("community", Some("Community Repo".to_string())));
+        accumulator.curated = true;
+        assert_eq!(accumulator.classify(), ("curated", None));
+        accumulator.official = true;
+        assert_eq!(accumulator.classify(), ("official", None));
+    }
 }

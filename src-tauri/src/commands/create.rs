@@ -111,7 +111,7 @@ pub(crate) fn validate_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn write_dir(dir: &Dir<'_>, root: &Path, destination: &Path) -> std::io::Result<()> {
+pub(crate) fn write_dir(dir: &Dir<'_>, root: &Path, destination: &Path) -> std::io::Result<()> {
     for entry in dir.entries() {
         match entry {
             DirEntry::Dir(child) => write_dir(child, root, destination)?,
@@ -131,7 +131,7 @@ fn write_dir(dir: &Dir<'_>, root: &Path, destination: &Path) -> std::io::Result<
     Ok(())
 }
 
-fn replace_value(text: &mut String, key: &str, value: &str) {
+pub(crate) fn replace_value(text: &mut String, key: &str, value: &str) {
     let Some(position) = text.find(key) else {
         return;
     };
@@ -148,11 +148,11 @@ fn replace_value(text: &mut String, key: &str, value: &str) {
     }
 }
 
-fn yaml_quote(value: &str) -> String {
+pub(crate) fn yaml_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-fn patch_project_settings(project: &Path, name: &str) -> std::io::Result<()> {
+pub(crate) fn patch_project_settings(project: &Path, name: &str) -> std::io::Result<()> {
     let file = project.join("ProjectSettings/ProjectSettings.asset");
     let Ok(mut text) = std::fs::read_to_string(&file) else {
         return Ok(());
@@ -216,7 +216,7 @@ struct PresetOutcome {
     notes: Vec<String>,
 }
 
-fn foreign_sdk(kind: &str) -> &'static str {
+pub(crate) fn foreign_sdk(kind: &str) -> &'static str {
     if kind == "world" {
         "com.vrchat.avatars"
     } else {
@@ -440,4 +440,107 @@ pub async fn create_project(
         warnings: outcome.warnings,
         notes: outcome.notes,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_names_are_valid() {
+        assert!(validate_name("My Project").is_ok());
+        assert!(validate_name("a-b_c.1").is_ok());
+        assert!(validate_name("Welt 2").is_ok());
+    }
+
+    #[test]
+    fn unsafe_or_awkward_names_are_rejected() {
+        for name in ["", "a/b", "a\\b", "a:b", "a*b", "a?b", "a\"b", "a<b", "a>b", "a|b", "a\nb", "..", ".", "ends.", "ends "] {
+            assert!(validate_name(name).is_err(), "{name:?} should be rejected");
+        }
+        assert!(validate_name(&"x".repeat(101)).is_err());
+        assert!(validate_name(&"x".repeat(100)).is_ok());
+    }
+
+    #[test]
+    fn yaml_quote_escapes_quotes_and_backslashes() {
+        assert_eq!(yaml_quote("Plain"), "\"Plain\"");
+        assert_eq!(yaml_quote("My \"Game\""), "\"My \\\"Game\\\"\"");
+        assert_eq!(yaml_quote("a\\b"), "\"a\\\\b\"");
+    }
+
+    #[test]
+    fn replace_value_only_touches_the_named_key_at_a_line_start() {
+        let mut text = "  productGUID: 0000\n  productName: Old\n  other: keep\n".to_string();
+        replace_value(&mut text, "productGUID: ", "abcd");
+        replace_value(&mut text, "productName: ", "\"New\"");
+        assert_eq!(text, "  productGUID: abcd\n  productName: \"New\"\n  other: keep\n");
+    }
+
+    #[test]
+    fn replace_value_ignores_a_key_in_the_middle_of_a_line() {
+        let mut text = "xproductName: Old\n".to_string();
+        replace_value(&mut text, "productName: ", "\"New\"");
+        assert_eq!(text, "xproductName: Old\n");
+    }
+
+    #[test]
+    fn project_settings_get_a_fresh_guid_and_the_project_name() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("ProjectSettings")).unwrap();
+        let file = dir.path().join("ProjectSettings/ProjectSettings.asset");
+        std::fs::write(&file, "PlayerSettings:\n  productGUID: 00000000000000000000000000000000\n  productName: Template\n  clonedFromGUID: 00000000000000000000000000000000\n").unwrap();
+        patch_project_settings(dir.path(), "My World").unwrap();
+        let text = std::fs::read_to_string(&file).unwrap();
+        let guid_line = text.lines().find(|line| line.trim_start().starts_with("productGUID:")).unwrap();
+        let guid = guid_line.split(": ").nth(1).unwrap();
+        assert_eq!(guid.len(), 32);
+        assert_ne!(guid, "00000000000000000000000000000000");
+        assert!(guid.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(text.contains("productName: \"My World\""));
+        assert!(text.contains("clonedFromGUID: 00000000000000000000000000000000"));
+    }
+
+    #[test]
+    fn a_missing_project_settings_file_is_not_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(patch_project_settings(dir.path(), "Name").is_ok());
+    }
+
+    #[test]
+    fn the_other_sdk_is_the_opposite_one() {
+        assert_eq!(foreign_sdk("world"), "com.vrchat.avatars");
+        assert_eq!(foreign_sdk("avatar"), "com.vrchat.worlds");
+    }
+
+    #[test]
+    fn template_ids_are_unique_and_kinds_are_valid() {
+        let mut ids = std::collections::HashSet::new();
+        for template in TEMPLATE_LIST {
+            assert!(ids.insert(template.id), "duplicate template id {}", template.id);
+            assert!(template.kind == "world" || template.kind == "avatar");
+        }
+    }
+
+    #[test]
+    fn every_embedded_template_is_complete() {
+        for template in TEMPLATE_LIST {
+            let dir = TEMPLATES
+                .get_dir(template.folder)
+                .unwrap_or_else(|| panic!("template folder {} is missing", template.folder));
+            let target = tempfile::tempdir().unwrap();
+            write_dir(dir, dir.path(), target.path()).unwrap();
+
+            let version = std::fs::read_to_string(target.path().join("ProjectSettings/ProjectVersion.txt")).unwrap();
+            assert!(version.contains(template.unity_version), "{} has the wrong Unity version", template.folder);
+
+            let manifest = std::fs::read_to_string(target.path().join("Packages/vpm-manifest.json")).unwrap();
+            let sdk = if template.kind == "world" { "com.vrchat.worlds" } else { "com.vrchat.avatars" };
+            assert!(manifest.contains(sdk), "{} should depend on {sdk}", template.folder);
+            assert!(!manifest.contains(foreign_sdk(template.kind)));
+
+            assert!(target.path().join("Assets").is_dir());
+            assert!(target.path().join("ProjectSettings/ProjectSettings.asset").is_file());
+        }
+    }
 }

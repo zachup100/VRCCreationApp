@@ -48,11 +48,7 @@ pub fn list_presets(state: State<'_, Mutex<PresetStore>>) -> Result<Vec<Preset>,
     Ok(presets)
 }
 
-#[tauri::command]
-pub fn save_preset(
-    input: PresetInput,
-    state: State<'_, Mutex<PresetStore>>,
-) -> Result<Preset, String> {
+pub(crate) fn build_preset(input: PresetInput, store: &PresetStore, now: i64) -> Result<Preset, String> {
     let name = input.name.trim().to_string();
     if name.is_empty() {
         return Err("Enter a preset name".to_string());
@@ -78,16 +74,14 @@ pub fn save_preset(
         return Err("Select at least one package".to_string());
     }
 
-    let mut store = lock(&state)?;
     if store.name_taken(&input.kind, &name, input.id.as_deref()) {
         return Err(format!("A {} preset named \"{name}\" already exists", input.kind));
     }
-    let now = now_millis();
     let existing = input.id.as_deref().and_then(|id| store.find(id)).cloned();
     if input.id.is_some() && existing.is_none() {
         return Err("This preset no longer exists".to_string());
     }
-    let preset = Preset {
+    Ok(Preset {
         id: existing
             .as_ref()
             .map(|preset| preset.id.clone())
@@ -97,7 +91,16 @@ pub fn save_preset(
         packages,
         created_at: existing.map(|preset| preset.created_at).unwrap_or(now),
         updated_at: now,
-    };
+    })
+}
+
+#[tauri::command]
+pub fn save_preset(
+    input: PresetInput,
+    state: State<'_, Mutex<PresetStore>>,
+) -> Result<Preset, String> {
+    let mut store = lock(&state)?;
+    let preset = build_preset(input, &store, now_millis())?;
     store.upsert(preset.clone());
     store.save().map_err(|error| error.to_string())?;
     Ok(preset)
@@ -165,4 +168,97 @@ pub async fn available_packages(
         .collect();
     rows.sort_by_key(|row| row.display_name.to_lowercase());
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn package(name: &str, version: Option<&str>) -> PresetPackage {
+        PresetPackage {
+            name: name.to_string(),
+            version: version.map(str::to_string),
+            display_name: None,
+        }
+    }
+
+    fn input(id: Option<&str>, name: &str, kind: &str, packages: Vec<PresetPackage>) -> PresetInput {
+        PresetInput {
+            id: id.map(str::to_string),
+            name: name.to_string(),
+            kind: kind.to_string(),
+            packages,
+        }
+    }
+
+    fn empty_store() -> (tempfile::TempDir, PresetStore) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = PresetStore::load(dir.path().to_path_buf());
+        (dir, store)
+    }
+
+    #[test]
+    fn a_valid_preset_is_trimmed_and_given_an_id() {
+        let (_dir, store) = empty_store();
+        let preset = build_preset(input(None, "  My Setup  ", "world", vec![package("a", None)]), &store, 100).unwrap();
+        assert_eq!(preset.name, "My Setup");
+        assert_eq!(preset.kind, "world");
+        assert!(!preset.id.is_empty());
+        assert_eq!(preset.created_at, 100);
+        assert_eq!(preset.updated_at, 100);
+    }
+
+    #[test]
+    fn bad_names_kinds_and_packages_are_rejected() {
+        let (_dir, store) = empty_store();
+        let ok = || vec![package("a", None)];
+        assert!(build_preset(input(None, "   ", "world", ok()), &store, 1).is_err());
+        assert!(build_preset(input(None, &"x".repeat(61), "world", ok()), &store, 1).is_err());
+        assert!(build_preset(input(None, "a\nb", "world", ok()), &store, 1).is_err());
+        assert!(build_preset(input(None, "Name", "scene", ok()), &store, 1).is_err());
+        assert!(build_preset(input(None, "Name", "world", vec![]), &store, 1).is_err());
+        assert!(build_preset(input(None, "Name", "world", vec![package("a", Some("not-a-version"))]), &store, 1).is_err());
+        assert!(build_preset(input(None, &"x".repeat(60), "world", ok()), &store, 1).is_ok());
+    }
+
+    #[test]
+    fn duplicate_package_names_are_dropped_keeping_the_first() {
+        let (_dir, store) = empty_store();
+        let preset = build_preset(
+            input(None, "Name", "avatar", vec![package("a", Some("1.0.0")), package("b", None), package("a", Some("2.0.0"))]),
+            &store,
+            1,
+        )
+        .unwrap();
+        assert_eq!(preset.packages.len(), 2);
+        assert_eq!(preset.packages[0].version.as_deref(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn names_may_repeat_across_types_but_not_within_one() {
+        let (_dir, mut store) = empty_store();
+        let first = build_preset(input(None, "Shared", "world", vec![package("a", None)]), &store, 1).unwrap();
+        store.upsert(first);
+        assert!(build_preset(input(None, "shared", "world", vec![package("a", None)]), &store, 2).is_err());
+        assert!(build_preset(input(None, "Shared", "avatar", vec![package("a", None)]), &store, 2).is_ok());
+    }
+
+    #[test]
+    fn editing_keeps_the_id_and_creation_time() {
+        let (_dir, mut store) = empty_store();
+        let created = build_preset(input(None, "Name", "world", vec![package("a", None)]), &store, 10).unwrap();
+        let id = created.id.clone();
+        store.upsert(created);
+        let edited = build_preset(input(Some(&id), "Name", "world", vec![package("a", None), package("b", None)]), &store, 20).unwrap();
+        assert_eq!(edited.id, id);
+        assert_eq!(edited.created_at, 10);
+        assert_eq!(edited.updated_at, 20);
+        assert_eq!(edited.packages.len(), 2);
+    }
+
+    #[test]
+    fn editing_a_preset_that_no_longer_exists_is_an_error() {
+        let (_dir, store) = empty_store();
+        assert!(build_preset(input(Some("gone"), "Name", "world", vec![package("a", None)]), &store, 1).is_err());
+    }
 }
