@@ -29,7 +29,7 @@ pub struct ImportResult {
     skipped: usize,
 }
 
-fn category_of(project_type: ProjectType) -> &'static str {
+pub(crate) fn category_of(project_type: ProjectType) -> &'static str {
     match project_type {
         ProjectType::LegacyAvatars => "legacy-avatar",
         ProjectType::LegacyWorlds | ProjectType::LegacySdk2 => "legacy-world",
@@ -39,7 +39,7 @@ fn category_of(project_type: ProjectType) -> &'static str {
     }
 }
 
-fn to_info(project: &StoredProject) -> ProjectInfo {
+pub(crate) fn to_info(project: &StoredProject) -> ProjectInfo {
     let name = Path::new(&project.path)
         .file_name()
         .and_then(|name| name.to_str())

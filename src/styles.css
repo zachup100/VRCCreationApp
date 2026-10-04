@@ -1402,3 +1402,12 @@ code {
 	justify-content: flex-end;
 	gap: 8px;
 }
+
+.spin {
+	animation: spin 0.8s linear infinite;
+}
+
+.template:disabled {
+	opacity: 0.6;
+	cursor: default;
+}

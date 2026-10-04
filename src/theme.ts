@@ -46,3 +46,13 @@ export function applyTheme(choice: ThemeChoice) {
 			: choice;
 	document.documentElement.dataset.theme = resolved;
 }
+
+const LOCATION_KEY = "lastProjectLocation";
+
+export function loadLastLocation(): string {
+	return read(LOCATION_KEY) ?? "";
+}
+
+export function saveLastLocation(location: string) {
+	write(LOCATION_KEY, location);
+}

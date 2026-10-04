@@ -172,3 +172,20 @@ export interface PackageImportResult {
 export function importPackagesFromVcc(): Promise<PackageImportResult> {
 	return invoke<PackageImportResult>("import_packages_from_vcc");
 }
+
+export interface TemplateInfo {
+	id: string;
+	title: string;
+	blurb: string;
+	kind: "world" | "avatar";
+	year: string;
+	unityVersion: string;
+}
+
+export function listTemplates(): Promise<TemplateInfo[]> {
+	return invoke<TemplateInfo[]>("list_templates");
+}
+
+export function createProject(template: string, name: string, location: string): Promise<ProjectInfo> {
+	return invoke<ProjectInfo>("create_project", { template, name, location });
+}

@@ -44,6 +44,8 @@ pub fn run() {
             commands::projects::open_project,
             commands::projects::open_project_folder,
             commands::packages::project_packages,
+            commands::create::list_templates,
+            commands::create::create_project,
             commands::changes::project_plan_changes,
             commands::changes::project_apply_changes,
             commands::repositories::repositories_info,
