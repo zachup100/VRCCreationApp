@@ -282,6 +282,7 @@ pub async fn repository_preview(
 #[tauri::command]
 pub async fn repository_add(url: String, vpm: State<'_, VpmContext>) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
+    let _busy = vpm.try_busy()?;
     let _guard = vpm.lock.lock().await;
     let mut settings = Settings::load(&vpm.io)
         .await
@@ -304,6 +305,7 @@ pub async fn repository_remove(
     vpm: State<'_, VpmContext>,
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
     {
         let _guard = vpm.lock.lock().await;
         let mut settings = Settings::load(&vpm.io)
@@ -332,8 +334,10 @@ pub async fn repository_remove(
 pub fn repository_set_hidden(
     id: String,
     hidden: bool,
+    vpm: State<'_, VpmContext>,
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
     let mut prefs = lock_prefs(&prefs)?;
     prefs.set_hidden(&id, hidden);
     prefs.save().map_err(|error| error.to_string())
@@ -368,6 +372,7 @@ pub async fn import_packages_from_vcc(
     app: AppHandle,
     vpm: State<'_, VpmContext>,
 ) -> Result<PackageImportResult, String> {
+    let _busy = vpm.try_busy()?;
     let vcc_io = DefaultEnvironmentIo::new_default();
     let settings_file = vcc_io.resolve(std::path::Path::new("settings.json"));
     if !settings_file.is_file() {

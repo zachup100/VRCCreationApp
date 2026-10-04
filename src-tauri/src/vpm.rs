@@ -22,7 +22,8 @@ impl VpmContext {
         std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
         let http = reqwest::Client::builder()
             .user_agent(concat!("VRCreationApp/", env!("CARGO_PKG_VERSION")))
-            .timeout(Duration::from_secs(30))
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(60))
             .build()
             .map_err(|error| error.to_string())?;
         Ok(Self {
@@ -31,6 +32,13 @@ impl VpmContext {
             lock: Mutex::new(()),
             ops: Mutex::new(()),
             collection: Mutex::new(None),
+        })
+    }
+
+    pub fn try_busy(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {
+        self.ops.try_lock().map_err(|_| {
+            "A package change is in progress. Wait for it to finish before making other changes."
+                .to_string()
         })
     }
 

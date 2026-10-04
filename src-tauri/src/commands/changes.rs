@@ -211,7 +211,7 @@ pub async fn project_plan_changes(
     if request.installs.is_empty() && request.removes.is_empty() {
         return Err("No package changes were selected".to_string());
     }
-    let _ops = vpm.ops.lock().await;
+    let _ops = vpm.try_busy()?;
     let project = load_project(&path, &store).await?;
     let collection = vpm.collection(false).await?;
 
@@ -245,7 +245,7 @@ pub async fn project_apply_changes(
     if request.installs.is_empty() && request.removes.is_empty() {
         return Err("No package changes were selected".to_string());
     }
-    let _ops = vpm.ops.lock().await;
+    let _ops = vpm.try_busy()?;
     let collection = vpm.collection(false).await?;
     let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
 

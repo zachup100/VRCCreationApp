@@ -129,6 +129,10 @@ button:disabled {
 	background: var(--surface-hover);
 }
 
+.nav-item:disabled {
+	opacity: 0.45;
+}
+
 .nav-item.active {
 	border-color: var(--border-strong);
 	background: var(--surface);

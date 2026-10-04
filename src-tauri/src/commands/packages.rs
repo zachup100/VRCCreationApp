@@ -49,6 +49,7 @@ pub async fn project_packages(
     store: State<'_, Mutex<ProjectStore>>,
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<ProjectPackages, String> {
+    let _busy = vpm.try_busy()?;
     {
         let store = store
             .lock()

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { listProjects, listUnityEditors } from "./api";
 import type { ProjectInfo, UnityEditorInfo } from "./api";
 import { errorMessage } from "./format";
@@ -45,6 +46,8 @@ interface AppContextValue {
 	editorsLoading: boolean;
 	editorsError: string | null;
 	refreshEditors: () => Promise<void>;
+	packageOperation: boolean;
+	setPackageOperation: (active: boolean) => void;
 	packageImport: ImportProgress | null;
 	setPackageImport: (progress: ImportProgress | null) => void;
 	repositoriesVersion: number;
@@ -81,6 +84,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	const [log, setLog] = useState<LogEntry[]>([]);
 	const [theme, setThemeState] = useState<ThemeChoice>(loadTheme);
 	const [view, setViewState] = useState<ViewMode>(loadView);
+	const [packageOperation, setPackageOperation] = useState(false);
 	const [packageImport, setPackageImport] = useState<ImportProgress | null>(null);
 	const [repositoriesVersion, setRepositoriesVersion] = useState(0);
 	const nextId = useRef(1);
@@ -128,6 +132,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	}, [refreshProjects, refreshEditors]);
 
 	useEffect(() => {
+		let unlisten: (() => void) | null = null;
+		let cancelled = false;
+		listen("close-blocked", () => notify("info", "Package changes are in progress. Close the app again once they finish."))
+			.then((stop) => {
+				if (cancelled) {
+					stop();
+				} else {
+					unlisten = stop;
+				}
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+			unlisten?.();
+		};
+	}, [notify]);
+
+	useEffect(() => {
 		applyTheme(theme);
 		if (theme !== "system") {
 			return;
@@ -159,6 +181,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			editorsLoading,
 			editorsError,
 			refreshEditors,
+			packageOperation,
+			setPackageOperation,
 			packageImport,
 			setPackageImport,
 			repositoriesVersion,
@@ -182,6 +206,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			editorsLoading,
 			editorsError,
 			refreshEditors,
+			packageOperation,
 			packageImport,
 			repositoriesVersion,
 			notify,

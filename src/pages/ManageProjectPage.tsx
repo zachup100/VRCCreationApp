@@ -149,7 +149,7 @@ function PackageTable({
 }
 
 export function ManageProjectPage({ path }: { path: string }) {
-	const { projects, editors, editorsLoading, navigate, notify } = useApp();
+	const { projects, editors, editorsLoading, navigate, notify, setPackageOperation } = useApp();
 	const actions = useActions();
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<RepoFilter>("all");
@@ -178,6 +178,11 @@ export function ManageProjectPage({ path }: { path: string }) {
 		},
 		[path, notify],
 	);
+
+	useEffect(() => {
+		setPackageOperation(working);
+		return () => setPackageOperation(false);
+	}, [working, setPackageOperation]);
 
 	const stageChange = (name: string, change: StagedChange | null) => {
 		setStaged((current) => {
@@ -255,10 +260,11 @@ export function ManageProjectPage({ path }: { path: string }) {
 	return (
 		<div className="page">
 			<header className="page-header">
-				<IconButton icon="arrowLeft" label="Back to projects" onClick={() => navigate({ page: "projects" })} />
+				<IconButton icon="arrowLeft" label="Back to projects" disabled={working} onClick={() => navigate({ page: "projects" })} />
 				<h1>{project.name}</h1>
 				<span className="spacer" />
 				<SplitButton
+					disabled={working}
 					onClick={() => void actions.open(project)}
 					items={[
 						{ label: "Open Folder", icon: "folderOpen", disabled: !project.exists, onSelect: () => void actions.openFolder(project) },
@@ -301,7 +307,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 					icon="refresh"
 					label="Refresh packages"
 					spinning={refreshing}
-					disabled={refreshing || !project.exists}
+					disabled={refreshing || working || !project.exists}
 					onClick={() => void load(true)}
 				/>
 				<span className="spacer" />
@@ -382,7 +388,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 				/>
 			)}
 			<div className="page-foot">
-				<Button variant="ghost" onClick={() => navigate({ page: "projects" })}>
+				<Button variant="ghost" disabled={working} onClick={() => navigate({ page: "projects" })}>
 					Back to projects
 				</Button>
 			</div>

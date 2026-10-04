@@ -1,4 +1,5 @@
 use crate::store::{now_millis, path_key, ProjectStore, StoredProject};
+use crate::vpm::VpmContext;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -76,8 +77,10 @@ pub fn list_projects(state: State<'_, Mutex<ProjectStore>>) -> Result<Vec<Projec
 #[tauri::command]
 pub async fn add_project(
     path: String,
+    vpm: State<'_, VpmContext>,
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<ProjectInfo, String> {
+    let _busy = vpm.try_busy()?;
     let root = PathBuf::from(&path);
     if !root.is_dir() {
         return Err("The selected path is not a folder".to_string());
@@ -102,7 +105,12 @@ pub async fn add_project(
 }
 
 #[tauri::command]
-pub fn remove_project(path: String, state: State<'_, Mutex<ProjectStore>>) -> Result<(), String> {
+pub fn remove_project(
+    path: String,
+    vpm: State<'_, VpmContext>,
+    state: State<'_, Mutex<ProjectStore>>,
+) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
     let mut store = lock(&state)?;
     if store.remove(&path) {
         store.save().map_err(|error| error.to_string())?;
@@ -114,8 +122,10 @@ pub fn remove_project(path: String, state: State<'_, Mutex<ProjectStore>>) -> Re
 pub fn set_project_favorite(
     path: String,
     favorite: bool,
+    vpm: State<'_, VpmContext>,
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
     let mut store = lock(&state)?;
     if store.set_favorite(&path, favorite) {
         store.save().map_err(|error| error.to_string())?;
@@ -125,8 +135,10 @@ pub fn set_project_favorite(
 
 #[tauri::command]
 pub async fn import_from_vcc(
+    vpm: State<'_, VpmContext>,
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<ImportResult, String> {
+    let _busy = vpm.try_busy()?;
     let io = DefaultEnvironmentIo::new_default();
     let database_file = io.resolve(Path::new("vcc.liteDb"));
     if !database_file.is_file() {
@@ -187,8 +199,10 @@ pub async fn import_from_vcc(
 #[tauri::command]
 pub async fn open_project(
     path: String,
+    vpm: State<'_, VpmContext>,
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
     let version = {
         let store = lock(&state)?;
         let project = store

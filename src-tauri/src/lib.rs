@@ -5,7 +5,7 @@ mod store;
 mod vpm;
 
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,6 +20,18 @@ pub fn run() {
             app.manage(Mutex::new(prefs::Prefs::load(folder.clone())));
             app.manage(vpm::VpmContext::new(folder.join("vpm"))?);
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let busy = window
+                    .try_state::<vpm::VpmContext>()
+                    .map(|vpm| vpm.try_busy().is_err())
+                    .unwrap_or(false);
+                if busy {
+                    api.prevent_close();
+                    let _ = window.emit("close-blocked", ());
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::unity::list_unity_editors,

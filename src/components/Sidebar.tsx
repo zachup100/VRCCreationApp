@@ -21,13 +21,15 @@ function activeGroup(page: Page): Page {
 }
 
 function NavItem({ page, label, icon }: { page: Page; label: string; icon: IconName }) {
-	const { route, navigate } = useApp();
+	const { route, navigate, packageOperation } = useApp();
 	const active = activeGroup(route.page) === page;
 	return (
 		<button
 			type="button"
 			className={`nav-item${active ? " active" : ""}`}
 			aria-current={active ? "page" : undefined}
+			disabled={packageOperation && !active}
+			title={packageOperation && !active ? "Wait for the package changes to finish" : undefined}
 			onClick={() => navigate({ page } as Route)}
 		>
 			<Icon name={icon} size={24} />

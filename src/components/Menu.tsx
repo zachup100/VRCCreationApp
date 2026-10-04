@@ -75,22 +75,24 @@ export function MoreMenu({ items, label = "More actions" }: { items: MenuItem[];
 
 interface SplitButtonProps {
 	variant?: ButtonVariant;
+	disabled?: boolean;
 	children: ReactNode;
 	onClick: () => void;
 	items: MenuItem[];
 }
 
-export function SplitButton({ variant = "primary", children, onClick, items }: SplitButtonProps) {
+export function SplitButton({ variant = "primary", disabled, children, onClick, items }: SplitButtonProps) {
 	const [open, setOpen] = useState(false);
 	const ref = useDismiss(open, () => setOpen(false));
 	return (
 		<div className="split menu-anchor" ref={ref}>
-			<Button variant={variant} className="split-main" onClick={onClick}>
+			<Button variant={variant} className="split-main" disabled={disabled} onClick={onClick}>
 				{children}
 			</Button>
 			<Button
 				variant={variant}
 				className="split-toggle"
+				disabled={disabled}
 				aria-label="More options"
 				aria-haspopup="menu"
 				aria-expanded={open}
