@@ -9,3 +9,5 @@ src-tauri/gen/
 .DS_Store
 release/
 todo.md
+build.sh
+test-build.sh
