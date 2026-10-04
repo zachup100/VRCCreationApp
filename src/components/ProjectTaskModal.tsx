@@ -68,7 +68,7 @@ export function ProjectTaskModal({ project, mode, onClose }: { project: ProjectI
 				setPhase(progress.name);
 			} else if (progress.kind === "backup") {
 				setBackupProgress({ done: progress.done, total: progress.total });
-			} else {
+			} else if (progress.kind === "unityLog") {
 				setLogLines((lines) => [...lines.slice(-80), progress.line]);
 			}
 		})

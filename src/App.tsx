@@ -1,6 +1,7 @@
 import { AppProvider, useApp } from "./AppContext";
 import { Sidebar } from "./components/Sidebar";
 import { Toasts } from "./components/Toasts";
+import { BackupsPage } from "./pages/BackupsPage";
 import { LearnPage } from "./pages/LearnPage";
 import { LogsPage } from "./pages/LogsPage";
 import { ManageProjectPage } from "./pages/ManageProjectPage";
@@ -14,6 +15,8 @@ function Page() {
 	switch (route.page) {
 		case "projects":
 			return <ProjectsPage />;
+		case "backups":
+			return <BackupsPage />;
 		case "new":
 			return <NewProjectPage />;
 		case "manage":

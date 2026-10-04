@@ -87,7 +87,7 @@ pub fn list_templates() -> Vec<TemplateInfo> {
         .collect()
 }
 
-fn validate_name(name: &str) -> Result<(), String> {
+pub(crate) fn validate_name(name: &str) -> Result<(), String> {
     let invalid = |c: char| c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|');
     if name.is_empty() {
         return Err("Enter a project name".to_string());

@@ -1,3 +1,4 @@
+pub mod backups;
 pub mod changes;
 pub mod create;
 pub mod migrate;

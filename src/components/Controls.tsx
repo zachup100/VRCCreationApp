@@ -304,7 +304,7 @@ export function EmptyState({
 	children,
 	actions,
 }: {
-	icon: "projects" | "package" | "logs" | "unity" | "learn";
+	icon: "projects" | "package" | "logs" | "unity" | "learn" | "backups";
 	title: string;
 	children?: ReactNode;
 	actions?: ReactNode;

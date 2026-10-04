@@ -430,8 +430,8 @@ button.th:hover {
 	color: var(--accent-hover);
 }
 
-.table-head:not(.packages):not(.repos),
-.table-body .row {
+.table-head:not(.packages):not(.repos):not(.backups),
+.table-body .row:not(.backups) {
 	grid-template-columns: 34px minmax(160px, 2.2fr) minmax(120px, 1fr) 150px 130px auto;
 }
 
@@ -1206,8 +1206,8 @@ code {
 }
 
 @media (max-width: 1000px) {
-	.table-head:not(.packages):not(.repos),
-	.table-body .row {
+	.table-head:not(.packages):not(.repos):not(.backups),
+	.table-body .row:not(.backups) {
 		grid-template-columns: 34px minmax(140px, 2fr) minmax(100px, 1fr) 130px auto;
 	}
 
@@ -1602,4 +1602,28 @@ code {
 .ok {
 	color: var(--success);
 	vertical-align: -4px;
+}
+
+.table-head.backups,
+.row.backups {
+	grid-template-columns: minmax(180px, 2fr) minmax(130px, 1fr) 150px minmax(170px, 1fr) auto;
+}
+
+.row.backups {
+	min-height: 72px;
+	border-bottom: 1px solid var(--border);
+}
+
+.row.backups:last-child {
+	border-bottom: none;
+}
+
+.row.backups:hover {
+	background: var(--surface-hover);
+}
+
+.created {
+	display: flex;
+	flex-direction: column;
+	font-size: 14px;
 }

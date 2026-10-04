@@ -9,6 +9,7 @@ import type { ThemeChoice, ViewMode } from "./theme";
 
 export type Route =
 	| { page: "projects" }
+	| { page: "backups" }
 	| { page: "new" }
 	| { page: "manage"; path: string }
 	| { page: "learn" }

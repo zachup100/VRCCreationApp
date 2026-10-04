@@ -228,6 +228,7 @@ export type MigrationKind = "vpm" | "unity2022";
 export type TaskProgress =
 	| { kind: "phase"; name: "backup" | "packages" | "unity" }
 	| { kind: "backup"; done: number; total: number }
+	| { kind: "restore"; done: number; total: number }
 	| { kind: "unityLog"; line: string };
 
 export function backupProject(path: string): Promise<BackupResult> {
@@ -240,4 +241,27 @@ export function migrateProject(path: string, kind: MigrationKind, backup: boolea
 
 export function openBackupFolder(): Promise<void> {
 	return invoke<void>("open_backup_folder");
+}
+
+export interface BackupInfo {
+	fileName: string;
+	projectName: string;
+	category: ProjectCategory;
+	unityVersion: string | null;
+	createdAt: number;
+	sizeBytes: number;
+}
+
+export type RestoreOutcome = { status: "restored"; project: ProjectInfo } | { status: "conflict"; name: string };
+
+export function listBackups(): Promise<BackupInfo[]> {
+	return invoke<BackupInfo[]>("list_backups");
+}
+
+export function deleteBackup(fileName: string): Promise<void> {
+	return invoke<void>("delete_backup", { fileName });
+}
+
+export function restoreBackup(fileName: string, location: string, name?: string): Promise<RestoreOutcome> {
+	return invoke<RestoreOutcome>("restore_backup", { fileName, location, name: name ?? null });
 }

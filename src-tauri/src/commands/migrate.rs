@@ -15,6 +15,18 @@ use vrc_get_vpm::unity_hub;
 use vrc_get_vpm::{ProjectType, UnityProject, VRCHAT_RECOMMENDED_2022_UNITY};
 
 const EVENT: &str = "project-task";
+pub(crate) const BACKUP_MARKER: &str = "VRCreationApp";
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackupMeta {
+    pub app: String,
+    pub version: u32,
+    pub project_name: String,
+    pub category: String,
+    pub unity_version: Option<String>,
+    pub created_at: i64,
+}
 
 #[derive(Serialize, Clone)]
 #[serde(
@@ -22,9 +34,10 @@ const EVENT: &str = "project-task";
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
-enum TaskProgress {
+pub(crate) enum TaskProgress {
     Phase { name: &'static str },
     Backup { done: usize, total: usize },
+    Restore { done: usize, total: usize },
     UnityLog { line: String },
 }
 
@@ -43,11 +56,11 @@ pub enum MigrationKind {
     Unity2022,
 }
 
-fn emit(app: &AppHandle, progress: TaskProgress) {
+pub(crate) fn emit(app: &AppHandle, progress: TaskProgress) {
     let _ = app.emit(EVENT, progress);
 }
 
-fn backup_directory(app: &AppHandle, prefs: &State<'_, Mutex<Prefs>>) -> Result<PathBuf, String> {
+pub(crate) fn backup_directory(app: &AppHandle, prefs: &State<'_, Mutex<Prefs>>) -> Result<PathBuf, String> {
     let configured = prefs
         .lock()
         .map_err(|_| "Preferences are unavailable".to_string())?
@@ -64,7 +77,7 @@ fn backup_directory(app: &AppHandle, prefs: &State<'_, Mutex<Prefs>>) -> Result<
     }
 }
 
-fn safe_file_name(name: &str) -> String {
+pub(crate) fn safe_file_name(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|') {
@@ -110,7 +123,13 @@ fn collect_files(
     Ok(())
 }
 
-fn write_backup(app: &AppHandle, project: &Path, target: &Path) -> Result<BackupResult, String> {
+fn write_backup(
+    app: &AppHandle,
+    project: &Path,
+    target: &Path,
+    unity_version: Option<String>,
+    category: String,
+) -> Result<BackupResult, String> {
     let mut files = Vec::new();
     collect_files(project, Path::new(""), &mut files)
         .map_err(|error| format!("Could not read the project files: {error}"))?;
@@ -137,6 +156,15 @@ fn write_backup(app: &AppHandle, project: &Path, target: &Path) -> Result<Backup
                 emit(app, TaskProgress::Backup { done: index + 1, total });
             }
         }
+        let meta = BackupMeta {
+            app: BACKUP_MARKER.to_string(),
+            version: 1,
+            project_name: root_name.clone(),
+            category,
+            unity_version,
+            created_at: crate::store::now_millis(),
+        };
+        writer.set_comment(serde_json::to_string(&meta).map_err(|error| error.to_string())?);
         writer
             .finish()
             .map_err(|error| format!("Could not finish the backup: {error}"))?;
@@ -179,10 +207,18 @@ async fn create_backup(
     let stamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
     let target = directory.join(format!("{name}-{stamp}.zip"));
 
+    let (unity_version, category) = match load_project(&project.to_string_lossy()).await {
+        Ok(loaded) => (
+            Some(loaded.unity_version().to_string()),
+            category_of(loaded.detect_project_type().await).to_string(),
+        ),
+        Err(_) => (None, "other".to_string()),
+    };
+
     emit(app, TaskProgress::Phase { name: "backup" });
     let handle = app.clone();
     let source = project.to_path_buf();
-    tokio::task::spawn_blocking(move || write_backup(&handle, &source, &target))
+    tokio::task::spawn_blocking(move || write_backup(&handle, &source, &target, unity_version, category))
         .await
         .map_err(|_| "The backup was interrupted".to_string())?
 }
