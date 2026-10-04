@@ -74,6 +74,8 @@ body,
 }
 
 body {
+	-webkit-user-select: none;
+	user-select: none;
 	margin: 0;
 	background: var(--bg);
 	color: var(--text);
@@ -93,6 +95,12 @@ button,
 input {
 	font: inherit;
 	color: inherit;
+}
+
+input,
+textarea {
+	-webkit-user-select: text;
+	user-select: text;
 }
 
 button {
