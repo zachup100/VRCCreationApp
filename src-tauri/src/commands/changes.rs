@@ -55,6 +55,7 @@ pub struct InstallChange {
 pub struct RemoveChange {
     name: String,
     reason: &'static str,
+    depends_on: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -109,6 +110,7 @@ fn summarize(project: &UnityProject, changes: &PendingProjectChanges<'_>) -> Cha
                     RemoveReason::Legacy => "legacy",
                     RemoveReason::Unused => "unused",
                 },
+                depends_on: Vec::new(),
             }),
         }
     }
@@ -234,10 +236,36 @@ pub(crate) fn expand_with_dependents(requested: &[String], locked: &[(String, Ve
     selected
 }
 
+pub(crate) fn dependency_reasons(
+    requested: &[String],
+    expanded: &[String],
+    locked: &[(String, Vec<String>)],
+) -> Vec<(String, Vec<String>)> {
+    expanded
+        .iter()
+        .filter(|name| !requested.contains(name))
+        .map(|name| {
+            let mut reasons: Vec<String> = locked
+                .iter()
+                .find(|(locked_name, _)| locked_name == name)
+                .map(|(_, dependencies)| {
+                    dependencies
+                        .iter()
+                        .filter(|dependency| expanded.contains(dependency))
+                        .cloned()
+                        .collect()
+                })
+                .unwrap_or_default();
+            reasons.sort_by_key(|reason| !requested.contains(reason));
+            (name.clone(), reasons)
+        })
+        .collect()
+}
+
 async fn plan_removes(
     project: &UnityProject,
     removes: &[String],
-) -> Result<(PendingProjectChanges<'static>, Vec<String>), String> {
+) -> Result<(PendingProjectChanges<'static>, Vec<(String, Vec<String>)>), String> {
     let locked: Vec<(String, Vec<String>)> = project
         .locked_packages()
         .map(|package| {
@@ -248,11 +276,7 @@ async fn plan_removes(
         })
         .collect();
     let expanded = expand_with_dependents(removes, &locked);
-    let extra: Vec<String> = expanded
-        .iter()
-        .filter(|name| !removes.contains(name))
-        .cloned()
-        .collect();
+    let extra = dependency_reasons(removes, &expanded, &locked);
     let names: Vec<&str> = expanded.iter().map(String::as_str).collect();
     let changes = project
         .remove_request(&names)
@@ -377,8 +401,9 @@ pub async fn project_plan_changes(
         let (changes, extra) = plan_removes(&project, &request.removes).await?;
         let mut summary = summarize(&project, &changes);
         for removal in &mut summary.removes {
-            if extra.contains(&removal.name) {
+            if let Some((_, reasons)) = extra.iter().find(|(name, _)| *name == removal.name) {
                 removal.reason = "dependent";
+                removal.depends_on = reasons.clone();
             }
         }
         Some(summary)
@@ -588,5 +613,36 @@ mod tests {
     fn requested_dependents_are_not_reported_twice() {
         let installed = locked(&[("sdk", &[]), ("tool", &["sdk"])]);
         assert_eq!(expand_with_dependents(&names(&["sdk", "tool"]), &installed), names(&["sdk", "tool"]));
+    }
+
+    #[test]
+    fn each_dependent_names_the_removed_packages_it_needs() {
+        let installed = locked(&[("sdk", &[]), ("tool", &["sdk"]), ("plugin", &["tool", "sdk"]), ("free", &[])]);
+        let requested = names(&["sdk"]);
+        let expanded = expand_with_dependents(&requested, &installed);
+        let reasons = dependency_reasons(&requested, &expanded, &installed);
+        assert_eq!(reasons.len(), 2);
+        let tool = reasons.iter().find(|(name, _)| name == "tool").unwrap();
+        assert_eq!(tool.1, names(&["sdk"]));
+        let plugin = reasons.iter().find(|(name, _)| name == "plugin").unwrap();
+        assert_eq!(plugin.1, names(&["sdk", "tool"]));
+    }
+
+    #[test]
+    fn a_dependent_reached_through_another_names_that_one() {
+        let installed = locked(&[("base", &[]), ("sdk", &["base"]), ("tool", &["sdk"])]);
+        let requested = names(&["base"]);
+        let expanded = expand_with_dependents(&requested, &installed);
+        let reasons = dependency_reasons(&requested, &expanded, &installed);
+        let tool = reasons.iter().find(|(name, _)| name == "tool").unwrap();
+        assert_eq!(tool.1, names(&["sdk"]));
+    }
+
+    #[test]
+    fn nothing_extra_means_no_reasons() {
+        let installed = locked(&[("a", &[]), ("b", &[])]);
+        let requested = names(&["a"]);
+        let expanded = expand_with_dependents(&requested, &installed);
+        assert!(dependency_reasons(&requested, &expanded, &installed).is_empty());
     }
 }

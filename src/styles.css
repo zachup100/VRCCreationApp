@@ -2146,3 +2146,13 @@ code {
 	margin-top: 4px;
 	color: var(--muted);
 }
+
+.change-name {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.change-note {
+	font-size: 13px;
+}

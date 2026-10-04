@@ -14,7 +14,7 @@ const installLabels: Record<ChangeSummary["installs"][number]["kind"], string> =
 
 const removeLabels: Record<ChangeSummary["removes"][number]["reason"], string> = {
 	requested: "Remove",
-	dependent: "Needs a removed package",
+	dependent: "Remove",
 	legacy: "Replaced legacy package",
 	unused: "No longer needed",
 };
@@ -115,12 +115,19 @@ export function ReviewChangesModal({
 				<>
 					<h3 className="modal-subtitle">Packages to remove</h3>
 					<ul className="change-list">
-						{summary.removes.map((item) => (
-							<li key={item.name} className="change-row">
-								<span className="tag kind-remove">{removeLabels[item.reason]}</span>
-								<strong>{item.name}</strong>
-							</li>
-						))}
+						{[...summary.removes]
+							.sort((a, b) => Number(a.reason === "dependent") - Number(b.reason === "dependent"))
+							.map((item) => (
+								<li key={item.name} className="change-row">
+									<span className="tag kind-remove">{removeLabels[item.reason]}</span>
+									<div className="change-name">
+										<strong>{item.name}</strong>
+										{item.reason === "dependent" && item.dependsOn.length > 0 && (
+											<span className="muted change-note">Depends on {item.dependsOn.join(", ")}</span>
+										)}
+									</div>
+								</li>
+							))}
 					</ul>
 				</>
 			)}
