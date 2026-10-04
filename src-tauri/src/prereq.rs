@@ -42,7 +42,7 @@ mod platform {
             .show()
             == rfd::MessageDialogResult::Yes;
         if open_download {
-            let _ = open::that(WEBVIEW2_DOWNLOAD_URL);
+            let _ = open::that_detached(WEBVIEW2_DOWNLOAD_URL);
         }
         false
     }

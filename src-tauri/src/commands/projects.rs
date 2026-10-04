@@ -278,7 +278,7 @@ pub fn set_project_launch_args(
 }
 
 #[tauri::command]
-pub fn open_project_folder(
+pub async fn open_project_folder(
     path: String,
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<(), String> {
@@ -288,5 +288,8 @@ pub fn open_project_folder(
             return Err("This project is not in the list".to_string());
         }
     }
-    open::that(&path).map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || open::that_detached(path))
+        .await
+        .map_err(|_| "Could not open the folder".to_string())?
+        .map_err(|error| error.to_string())
 }

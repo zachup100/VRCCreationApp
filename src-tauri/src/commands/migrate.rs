@@ -220,10 +220,13 @@ pub async fn backup_project(
 }
 
 #[tauri::command]
-pub fn open_backup_folder(app: AppHandle, prefs: State<'_, Mutex<Prefs>>) -> Result<(), String> {
+pub async fn open_backup_folder(app: AppHandle, prefs: State<'_, Mutex<Prefs>>) -> Result<(), String> {
     let directory = backup_directory(&app, &prefs)?;
     std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-    open::that(directory).map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || open::that_detached(directory))
+        .await
+        .map_err(|_| "Could not open the folder".to_string())?
+        .map_err(|error| error.to_string())
 }
 
 fn run_unity_upgrade(app: &AppHandle, executable: PathBuf, project: &Path) -> Result<(), String> {

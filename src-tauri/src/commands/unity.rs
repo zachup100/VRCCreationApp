@@ -41,7 +41,7 @@ pub async fn list_unity_editors() -> Result<Vec<UnityEditorInfo>, String> {
 }
 
 #[tauri::command]
-pub fn open_external(url: String) -> Result<(), String> {
+pub async fn open_external(url: String) -> Result<(), String> {
     let rest = url
         .strip_prefix("https://")
         .ok_or_else(|| "Only https links can be opened".to_string())?;
@@ -49,5 +49,8 @@ pub fn open_external(url: String) -> Result<(), String> {
     if !ALLOWED_HOSTS.contains(&host) {
         return Err("This link is not on the allowed list".to_string());
     }
-    open::that(&url).map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || open::that_detached(url))
+        .await
+        .map_err(|_| "Could not open the link".to_string())?
+        .map_err(|error| error.to_string())
 }
