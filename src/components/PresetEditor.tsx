@@ -54,6 +54,7 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 						latestVersion: null,
 						source: "unavailable",
 						repository: null,
+						requiresSdk: null,
 					}));
 				const initial = new Set(preset?.packages.map((item) => item.name) ?? []);
 				setLoad({ status: "ready", rows: sortRows([...available, ...missing], initial) });
@@ -97,6 +98,7 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 		});
 	};
 
+	const skipped = load.status === "ready" ? load.rows.filter((row) => selected.has(row.name) && row.requiresSdk !== null && row.requiresSdk !== kind) : [];
 	const trimmed = name.trim();
 	const nameProblem = !trimmed ? "Enter a preset name" : trimmed.length > 60 ? "The name is too long" : null;
 	const canSave = !nameProblem && selected.size > 0 && !saving;
@@ -157,6 +159,15 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 			<p className="muted preset-hint">
 				Choose the packages to install in new projects. Pick Latest to always use the newest version at the time the project is created, or a specific version.
 			</p>
+			{skipped.length > 0 && (
+				<div className="notice warn">
+					<Icon name="alert" size={18} />
+					<span>
+						{skipped.length} selected {skipped.length === 1 ? "package needs" : "packages need"} the {kind === "world" ? "Avatars" : "Worlds"} SDK and will be skipped in {kind} projects:{" "}
+						{skipped.map((row) => row.displayName).join(", ")}.
+					</span>
+				</div>
+			)}
 
 			<div className="card table">
 				<div className="table-head packages">
@@ -196,12 +207,16 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 							const options = [{ value: LATEST, label: "Latest" }, ...row.versions.map((version) => ({ value: version, label: version }))];
 							const current = choices[row.name] ?? LATEST;
 							const hasChoice = options.some((option) => option.value === current);
+							const otherSdk = row.requiresSdk !== null && row.requiresSdk !== kind;
 							return (
-								<div key={row.name} className={`row packages${isSelected ? " staged-install" : ""}`}>
+								<div key={row.name} className={`row packages${isSelected ? " staged-install" : ""}${otherSdk ? " other-sdk" : ""}`}>
 									<div className="pkg-name">
 										<Icon name="package" size={22} />
 										<div>
-											<strong title={row.name}>{row.displayName}</strong>
+											<strong title={row.name}>
+												{row.displayName}
+												{otherSdk && <span className="tag warn-tag">{row.requiresSdk === "avatar" ? "Avatar SDK only" : "World SDK only"}</span>}
+											</strong>
 											{row.displayName !== row.name && <span className="path">{row.name}</span>}
 										</div>
 									</div>
@@ -224,6 +239,7 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 											label={isSelected ? `Remove ${row.displayName} from the preset` : `Add ${row.displayName} to the preset`}
 											className={isSelected ? "add selected" : "add"}
 											aria-pressed={isSelected}
+											disabled={otherSdk && !isSelected}
 											onClick={() => toggle(row.name)}
 										/>
 									</div>

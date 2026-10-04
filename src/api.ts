@@ -194,6 +194,7 @@ export function listTemplates(): Promise<TemplateInfo[]> {
 export interface CreatedProject {
 	project: ProjectInfo;
 	warnings: string[];
+	notes: string[];
 }
 
 export function createProject(template: string, name: string, location: string, presetId?: string): Promise<CreatedProject> {
@@ -302,6 +303,7 @@ export interface AvailablePackage {
 	latestVersion: string | null;
 	source: PackageSource;
 	repository: string | null;
+	requiresSdk: PresetKind | null;
 }
 
 export function listPresets(): Promise<Preset[]> {

@@ -82,6 +82,9 @@ export function NewProjectPage() {
 			const created = await createProject(template, trimmed, location.trim(), activePreset?.id);
 			saveLastLocation(location.trim());
 			notify("success", `Created ${created.project.name}`);
+			if (created.notes.length > 0) {
+				notify("info", created.notes.join("; "));
+			}
 			if (created.warnings.length > 0) {
 				notify("warning", `Some preset packages were skipped: ${created.warnings.join("; ")}`);
 			}

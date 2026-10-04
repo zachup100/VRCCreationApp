@@ -204,6 +204,21 @@ async fn build_project(
 pub struct CreatedProject {
     project: ProjectInfo,
     warnings: Vec<String>,
+    notes: Vec<String>,
+}
+
+#[derive(Default)]
+struct PresetOutcome {
+    warnings: Vec<String>,
+    notes: Vec<String>,
+}
+
+fn foreign_sdk(kind: &str) -> &'static str {
+    if kind == "world" {
+        "com.vrchat.avatars"
+    } else {
+        "com.vrchat.worlds"
+    }
 }
 
 async fn apply_preset(
@@ -211,15 +226,20 @@ async fn apply_preset(
     preset: &Preset,
     allow_prerelease: bool,
     vpm: &VpmContext,
-) -> Vec<String> {
-    let mut warnings = Vec::new();
+) -> PresetOutcome {
+    let mut outcome = PresetOutcome::default();
     let collection = match vpm.collection(false).await {
         Ok(collection) => collection,
-        Err(message) => return vec![format!("Preset packages were not installed: {message}")],
+        Err(message) => {
+            outcome
+                .warnings
+                .push(format!("Preset packages were not installed: {message}"));
+            return outcome;
+        }
     };
     let latest = VersionSelector::latest_for(Some(project.unity_version()), allow_prerelease);
 
-    let mut wanted = Vec::new();
+    let mut candidates = Vec::new();
     for package in &preset.packages {
         let found = match &package.version {
             Some(text) => match Version::from_str(text) {
@@ -230,23 +250,56 @@ async fn apply_preset(
             None => collection.find_package_by_name(&package.name, latest),
         };
         match found {
-            Some(info) => {
-                let already = project
-                    .get_locked(&package.name)
-                    .map(|locked| locked.version() == info.version())
-                    .unwrap_or(false);
-                if !already {
-                    wanted.push(info);
-                }
-            }
-            None => warnings.push(match &package.version {
+            Some(info) => candidates.push(info),
+            None => outcome.warnings.push(match &package.version {
                 Some(version) => format!("{} {} was not found", package.name, version),
                 None => format!("{} has no version for this project", package.name),
             }),
         }
     }
+
+    let mut provided: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for manifest in project.all_installed_packages() {
+        let provider = manifest.display_name().unwrap_or(manifest.name()).to_string();
+        for legacy in manifest.legacy_packages() {
+            provided.insert(legacy.to_string(), provider.clone());
+        }
+    }
+    for info in &candidates {
+        let provider = info.display_name().unwrap_or(info.name()).to_string();
+        for legacy in info.legacy_packages() {
+            provided.entry(legacy.to_string()).or_insert_with(|| provider.clone());
+        }
+    }
+
+    let other_sdk = foreign_sdk(&preset.kind);
+    let mut wanted = Vec::new();
+    for info in candidates {
+        let label = info.display_name().unwrap_or(info.name()).to_string();
+        if let Some(provider) = provided.get(info.name()) {
+            outcome
+                .notes
+                .push(format!("{label} is already included in {provider}"));
+            continue;
+        }
+        if info.name() == other_sdk || info.vpm_dependencies().contains_key(other_sdk) {
+            let sdk = if preset.kind == "world" { "Avatars" } else { "Worlds" };
+            outcome.warnings.push(format!(
+                "{label} needs the VRChat {sdk} SDK, so it was not installed in this {} project",
+                preset.kind
+            ));
+            continue;
+        }
+        let already = project
+            .get_locked(info.name())
+            .map(|locked| locked.version() == info.version())
+            .unwrap_or(false);
+        if !already {
+            wanted.push(info);
+        }
+    }
     if wanted.is_empty() {
-        return warnings;
+        return outcome;
     }
 
     let changes = match project
@@ -255,19 +308,39 @@ async fn apply_preset(
     {
         Ok(changes) => changes,
         Err(error) => {
-            warnings.push(format!("Preset packages were not installed: {error}"));
-            return warnings;
+            outcome
+                .warnings
+                .push(format!("Preset packages were not installed: {error}"));
+            return outcome;
         }
     };
     if !changes.conflicts().is_empty() {
-        warnings.push("Preset packages were not installed because they conflict with the project".to_string());
-        return warnings;
+        outcome
+            .warnings
+            .push("Preset packages were not installed because they conflict with the project".to_string());
+        return outcome;
+    }
+    let pulls_other_sdk = changes.package_changes().iter().any(|(name, change)| {
+        name.as_ref() == other_sdk
+            && change
+                .as_install()
+                .map(|install| install.install_package().is_some())
+                .unwrap_or(false)
+    });
+    if pulls_other_sdk {
+        outcome.warnings.push(format!(
+            "Preset packages were not installed because they would add the other VRChat SDK to this {} project",
+            preset.kind
+        ));
+        return outcome;
     }
     let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
     if let Err(error) = project.apply_pending_changes(&installer, changes).await {
-        warnings.push(format!("Preset packages could not be installed: {error}"));
+        outcome
+            .warnings
+            .push(format!("Preset packages could not be installed: {error}"));
     }
-    warnings
+    outcome
 }
 
 #[tauri::command]
@@ -330,9 +403,9 @@ pub async fn create_project(
         }
     };
 
-    let warnings = match &preset {
+    let outcome = match &preset {
         Some(preset) => apply_preset(&mut project, preset, allow_prerelease, &vpm).await,
-        None => Vec::new(),
+        None => PresetOutcome::default(),
     };
 
     let stored = StoredProject {
@@ -351,6 +424,7 @@ pub async fn create_project(
     store.save().map_err(|error| error.to_string())?;
     Ok(CreatedProject {
         project: to_info(&stored),
-        warnings,
+        warnings: outcome.warnings,
+        notes: outcome.notes,
     })
 }

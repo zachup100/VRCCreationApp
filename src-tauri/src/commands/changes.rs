@@ -175,6 +175,27 @@ async fn plan_installs<'env>(
             .ok_or_else(|| format!("{} {} was not found", install.name, install.version))?;
         packages.push(package);
     }
+    let mut provided: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for manifest in project.all_installed_packages() {
+        let provider = manifest.display_name().unwrap_or(manifest.name()).to_string();
+        for legacy in manifest.legacy_packages() {
+            provided.insert(legacy.to_string(), provider.clone());
+        }
+    }
+    for package in &packages {
+        let provider = package.display_name().unwrap_or(package.name()).to_string();
+        for legacy in package.legacy_packages() {
+            provided.entry(legacy.to_string()).or_insert_with(|| provider.clone());
+        }
+    }
+    for package in &packages {
+        if let Some(provider) = provided.get(package.name()) {
+            let label = package.display_name().unwrap_or(package.name());
+            return Err(format!(
+                "{label} is already included in {provider} and does not need to be installed"
+            ));
+        }
+    }
     project
         .add_package_request(collection, &packages, AddPackageOperation::AutoDetected, allow_prerelease)
         .await

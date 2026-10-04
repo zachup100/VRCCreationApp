@@ -1811,3 +1811,13 @@ code {
 .hover-anchor:focus-within .popover {
 	display: block;
 }
+
+.row.other-sdk .pkg-name,
+.row.other-sdk .latest {
+	opacity: 0.6;
+}
+
+.tag.warn-tag {
+	color: var(--warn);
+	border-color: var(--warn);
+}

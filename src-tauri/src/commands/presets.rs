@@ -9,6 +9,7 @@ use std::str::FromStr;
 use std::sync::Mutex;
 use tauri::State;
 use vrc_get_vpm::version::Version;
+use vrc_get_vpm::{PackageCollection, VersionSelector};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +29,7 @@ pub struct AvailablePackage {
     latest_version: Option<String>,
     source: &'static str,
     repository: Option<String>,
+    requires_sdk: Option<&'static str>,
 }
 
 fn lock<'a>(
@@ -134,7 +136,24 @@ pub async fn available_packages(
             versions.sort();
             versions.dedup();
             versions.reverse();
+            let requires_sdk = match name.as_str() {
+                "com.vrchat.avatars" => Some("avatar"),
+                "com.vrchat.worlds" => Some("world"),
+                _ => collection
+                    .find_package_by_name(&name, VersionSelector::latest_for(None, allow_prerelease))
+                    .and_then(|info| {
+                        let deps = info.vpm_dependencies();
+                        if deps.contains_key("com.vrchat.avatars") {
+                            Some("avatar")
+                        } else if deps.contains_key("com.vrchat.worlds") {
+                            Some("world")
+                        } else {
+                            None
+                        }
+                    }),
+            };
             AvailablePackage {
+                requires_sdk,
                 display_name: accumulator.display_name.unwrap_or_else(|| name.clone()),
                 latest_version: versions.first().map(Version::to_string),
                 versions: versions.iter().map(Version::to_string).collect(),
