@@ -11,7 +11,90 @@ export interface MenuItem {
 	icon?: IconName;
 	danger?: boolean;
 	disabled?: boolean;
-	onSelect: () => void;
+	onSelect?: () => void;
+	submenu?: MenuItem[];
+}
+
+const ITEM_SELECTOR = ':scope > [role="menuitem"], :scope > .submenu-anchor > [role="menuitem"]';
+const SUBMENU_ITEM_SELECTOR = ':scope > [role="menuitem"]';
+
+function SubMenuItem({ item, closeAndFocus }: { item: MenuItem; closeAndFocus: () => void }) {
+	const [open, setOpen] = useState(false);
+	const [focusFirst, setFocusFirst] = useState(false);
+	const triggerRef = useRef<HTMLButtonElement>(null);
+	const listRef = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		if (open && focusFirst) {
+			focusItem(listRef.current, SUBMENU_ITEM_SELECTOR, "first");
+			setFocusFirst(false);
+		}
+	}, [open, focusFirst]);
+	const closeSub = () => {
+		setOpen(false);
+		triggerRef.current?.focus();
+	};
+	return (
+		<div className="submenu-anchor" onMouseEnter={() => !item.disabled && setOpen(true)} onMouseLeave={() => setOpen(false)}>
+			<button
+				ref={triggerRef}
+				type="button"
+				role="menuitem"
+				aria-haspopup="menu"
+				aria-expanded={open}
+				disabled={item.disabled}
+				className={`menu-item${item.danger ? " danger" : ""}`}
+				onClick={() => setOpen((value) => !value)}
+				onKeyDown={(event) => {
+					if (event.key === "ArrowLeft" || event.key === "Enter" || event.key === " ") {
+						event.preventDefault();
+						setOpen(true);
+						setFocusFirst(true);
+					}
+				}}
+			>
+				{item.icon && <Icon name={item.icon} size={17} />}
+				{item.label}
+				<Icon name="chevronLeft" size={16} className="push" />
+			</button>
+			{open && (
+				<div
+					className="menu submenu"
+					role="menu"
+					ref={listRef}
+					onKeyDown={(event) => {
+						event.stopPropagation();
+						if (event.key === "Escape" || event.key === "ArrowRight") {
+							event.preventDefault();
+							closeSub();
+							return;
+						}
+						if (event.key === "Tab") {
+							closeSub();
+							return;
+						}
+						listKeys(event, listRef.current, SUBMENU_ITEM_SELECTOR, { next: ["ArrowDown"], previous: ["ArrowUp"] });
+					}}
+				>
+					{(item.submenu ?? []).map((sub) => (
+						<button
+							key={sub.label}
+							type="button"
+							role="menuitem"
+							disabled={sub.disabled}
+							className={`menu-item${sub.danger ? " danger" : ""}`}
+							onClick={() => {
+								closeAndFocus();
+								sub.onSelect?.();
+							}}
+						>
+							{sub.icon && <Icon name={sub.icon} size={17} />}
+							{sub.label}
+						</button>
+					))}
+				</div>
+			)}
+		</div>
+	);
 }
 
 function useDismiss(open: boolean, close: () => void, onEscape?: () => void) {
@@ -43,7 +126,7 @@ function useDismiss(open: boolean, close: () => void, onEscape?: () => void) {
 function MenuList({ items, close, closeAndFocus }: { items: MenuItem[]; close: () => void; closeAndFocus: () => void }) {
 	const ref = useRef<HTMLDivElement>(null);
 	useEffect(() => {
-		focusItem(ref.current, '[role="menuitem"]', "first");
+		focusItem(ref.current, ITEM_SELECTOR, "first");
 	}, []);
 	return (
 		<div
@@ -55,10 +138,13 @@ function MenuList({ items, close, closeAndFocus }: { items: MenuItem[]; close: (
 					close();
 					return;
 				}
-				listKeys(event, ref.current, '[role="menuitem"]', { next: ["ArrowDown"], previous: ["ArrowUp"] });
+				listKeys(event, ref.current, ITEM_SELECTOR, { next: ["ArrowDown"], previous: ["ArrowUp"] });
 			}}
 		>
-			{items.map((item) => (
+			{items.map((item) =>
+				item.submenu ? (
+					<SubMenuItem key={item.label} item={item} closeAndFocus={closeAndFocus} />
+				) : (
 				<button
 					key={item.label}
 					type="button"
@@ -67,13 +153,14 @@ function MenuList({ items, close, closeAndFocus }: { items: MenuItem[]; close: (
 					className={`menu-item${item.danger ? " danger" : ""}`}
 					onClick={() => {
 						closeAndFocus();
-						item.onSelect();
+						item.onSelect?.();
 					}}
 				>
 					{item.icon && <Icon name={item.icon} size={17} />}
 					{item.label}
 				</button>
-			))}
+				),
+			)}
 		</div>
 	);
 }

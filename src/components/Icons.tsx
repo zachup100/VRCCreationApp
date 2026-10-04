@@ -67,6 +67,7 @@ const paths = {
 		</>
 	),
 	chevronDown: <path d="m6 9 6 6 6-6" />,
+	chevronLeft: <path d="m15 6-6 6 6 6" />,
 	chevronUp: <path d="m6 15 6-6 6 6" />,
 	arrowLeft: <path d="M19 12H5m6-6-6 6 6 6" />,
 	arrowUp: <path d="M12 19V5m-6 6 6-6 6 6" />,

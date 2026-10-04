@@ -338,6 +338,16 @@ button:disabled {
 	box-shadow: var(--shadow);
 }
 
+.submenu-anchor {
+	position: relative;
+}
+
+.menu.submenu {
+	top: -7px;
+	right: calc(100% - 2px);
+	min-width: 190px;
+}
+
 .menu-item {
 	display: flex;
 	align-items: center;

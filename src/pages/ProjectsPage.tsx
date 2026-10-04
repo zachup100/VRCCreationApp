@@ -92,7 +92,12 @@ export function ProjectsPage() {
 			icon: "star",
 			onSelect: () => void actions.toggleFavorite(project),
 		},
-		{ label: "Remove From List", icon: "trash", danger: true, onSelect: () => setPendingRemove(project) },
+		{
+			label: "Dangerous Actions",
+			icon: "alert",
+			danger: true,
+			submenu: [{ label: "Remove From List", icon: "trash", danger: true, onSelect: () => setPendingRemove(project) }],
+		},
 	];
 
 	const rowActions = (project: ProjectInfo) => {
