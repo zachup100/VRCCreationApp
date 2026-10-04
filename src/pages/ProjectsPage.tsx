@@ -6,6 +6,7 @@ import { Button, IconButton } from "../components/Button";
 import { ConfirmModal, EmptyState, SearchInput } from "../components/Controls";
 import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
+import { useProjectDialogs } from "../components/ProjectDialogs";
 import type { MenuItem } from "../components/Menu";
 import { TypeBadge, VersionChip, hasEditor } from "../components/ProjectParts";
 import { timeAgo } from "../format";
@@ -51,6 +52,7 @@ function StarButton({ project, onToggle }: { project: ProjectInfo; onToggle: () 
 export function ProjectsPage() {
 	const { projects, projectsLoading, refreshProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
 	const actions = useActions();
+	const dialogs = useProjectDialogs();
 	const [query, setQuery] = useState("");
 	const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "modified", desc: true });
 	const [pendingRemove, setPendingRemove] = useState<ProjectInfo | null>(null);
@@ -69,6 +71,8 @@ export function ProjectsPage() {
 	};
 
 	const menuFor = (project: ProjectInfo): MenuItem[] => [
+		{ label: "Open With...", icon: "unity", disabled: !project.exists, onSelect: () => dialogs.openWith(project) },
+		{ label: "Launch Options...", icon: "settings", onSelect: () => dialogs.launchOptions(project) },
 		{ label: "Open Folder", icon: "folderOpen", disabled: !project.exists, onSelect: () => void actions.openFolder(project) },
 		{ label: "Copy Path", icon: "copy", onSelect: () => void actions.copyPath(project) },
 		{
@@ -221,6 +225,7 @@ export function ProjectsPage() {
 				</div>
 			)}
 
+			{dialogs.element}
 			{pendingRemove && (
 				<ConfirmModal
 					title="Remove Project"

@@ -15,6 +15,7 @@ export interface ProjectInfo {
 	category: ProjectCategory;
 	favorite: boolean;
 	lastModified: number;
+	launchArgs: string | null;
 	exists: boolean;
 }
 
@@ -32,8 +33,12 @@ export function openExternal(url: string): Promise<void> {
 	return invoke<void>("open_external", { url });
 }
 
-export function openProject(path: string): Promise<void> {
-	return invoke<void>("open_project", { path });
+export function openProject(path: string, editorVersion?: string): Promise<void> {
+	return invoke<void>("open_project", { path, editorVersion: editorVersion ?? null });
+}
+
+export function setProjectLaunchArgs(path: string, args: string): Promise<void> {
+	return invoke<void>("set_project_launch_args", { path, args });
 }
 
 export function openProjectFolder(path: string): Promise<void> {
@@ -188,4 +193,26 @@ export function listTemplates(): Promise<TemplateInfo[]> {
 
 export function createProject(template: string, name: string, location: string): Promise<ProjectInfo> {
 	return invoke<ProjectInfo>("create_project", { template, name, location });
+}
+
+export interface AppSettings {
+	defaultProjectLocation: string | null;
+	backupLocation: string | null;
+	showPrerelease: boolean;
+	defaultUnityArgs: string;
+}
+
+export interface SettingsPatch {
+	defaultProjectLocation?: string;
+	backupLocation?: string;
+	showPrerelease?: boolean;
+	defaultUnityArgs?: string;
+}
+
+export function getSettings(): Promise<AppSettings> {
+	return invoke<AppSettings>("get_settings");
+}
+
+export function updateSettings(patch: SettingsPatch): Promise<AppSettings> {
+	return invoke<AppSettings>("update_settings", { patch });
 }

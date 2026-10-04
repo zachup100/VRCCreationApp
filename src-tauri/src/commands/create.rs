@@ -238,6 +238,7 @@ pub async fn create_project(
         favorite: false,
         added_at: now_millis(),
         last_modified: now_millis(),
+        launch_args: None,
     };
     let mut store = store
         .lock()

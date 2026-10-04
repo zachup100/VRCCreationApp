@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { listProjects, listUnityEditors } from "./api";
-import type { ProjectInfo, UnityEditorInfo } from "./api";
+import { getSettings, listProjects, listUnityEditors, updateSettings as saveSettings } from "./api";
+import type { AppSettings, ProjectInfo, SettingsPatch, UnityEditorInfo } from "./api";
 import { errorMessage } from "./format";
 import { applyTheme, loadTheme, loadView, saveTheme, saveView } from "./theme";
 import type { ThemeChoice, ViewMode } from "./theme";
@@ -46,6 +46,8 @@ interface AppContextValue {
 	editorsLoading: boolean;
 	editorsError: string | null;
 	refreshEditors: () => Promise<void>;
+	settings: AppSettings;
+	updateSettings: (patch: SettingsPatch) => Promise<boolean>;
 	packageOperation: boolean;
 	setPackageOperation: (active: boolean) => void;
 	packageImport: ImportProgress | null;
@@ -84,6 +86,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	const [log, setLog] = useState<LogEntry[]>([]);
 	const [theme, setThemeState] = useState<ThemeChoice>(loadTheme);
 	const [view, setViewState] = useState<ViewMode>(loadView);
+	const [settings, setSettings] = useState<AppSettings>({
+		defaultProjectLocation: null,
+		backupLocation: null,
+		showPrerelease: false,
+		defaultUnityArgs: "",
+	});
 	const [packageOperation, setPackageOperation] = useState(false);
 	const [packageImport, setPackageImport] = useState<ImportProgress | null>(null);
 	const [repositoriesVersion, setRepositoriesVersion] = useState(0);
@@ -129,7 +137,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		void refreshProjects();
 		void refreshEditors();
-	}, [refreshProjects, refreshEditors]);
+		getSettings()
+			.then(setSettings)
+			.catch((error) => notify("error", errorMessage(error)));
+	}, [refreshProjects, refreshEditors, notify]);
+
+	const updateSettings = useCallback(
+		async (patch: SettingsPatch) => {
+			try {
+				setSettings(await saveSettings(patch));
+				return true;
+			} catch (error) {
+				notify("error", errorMessage(error));
+				return false;
+			}
+		},
+		[notify],
+	);
 
 	useEffect(() => {
 		let unlisten: (() => void) | null = null;
@@ -181,6 +205,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			editorsLoading,
 			editorsError,
 			refreshEditors,
+			settings,
+			updateSettings,
 			packageOperation,
 			setPackageOperation,
 			packageImport,
@@ -206,6 +232,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			editorsLoading,
 			editorsError,
 			refreshEditors,
+			settings,
+			updateSettings,
 			packageOperation,
 			packageImport,
 			repositoriesVersion,

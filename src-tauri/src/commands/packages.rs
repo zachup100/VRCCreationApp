@@ -59,6 +59,11 @@ pub async fn project_packages(
         }
     }
 
+    let allow_prerelease = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .settings()
+        .show_prerelease;
     let hidden: HashSet<String> = {
         let prefs = prefs
             .lock()
@@ -82,7 +87,7 @@ pub async fn project_packages(
     let collection = vpm.collection(refresh).await?;
 
     let unity = project.unity_version();
-    let selector = VersionSelector::latest_for(Some(unity), false);
+    let selector = VersionSelector::latest_for(Some(unity), allow_prerelease);
 
     let mut names: HashMap<String, Accumulator> = HashMap::new();
     for info in collection.get_all_packages() {
@@ -93,7 +98,7 @@ pub async fn project_packages(
         if entry.display_name.is_none() {
             entry.display_name = info.display_name().map(str::to_string);
         }
-        if !info.version().is_pre() {
+        if allow_prerelease || !info.version().is_pre() {
             entry.versions.push(info.version().clone());
         }
         match info.repo() {

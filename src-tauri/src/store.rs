@@ -16,6 +16,8 @@ pub struct StoredProject {
     pub favorite: bool,
     pub added_at: i64,
     pub last_modified: i64,
+    #[serde(default)]
+    pub launch_args: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -99,6 +101,22 @@ impl ProjectStore {
             .find(|project| path_key(&project.path) == key)
         {
             project.last_modified = now_millis();
+        }
+    }
+
+    pub fn set_launch_args(&mut self, path: &str, args: Option<String>) -> bool {
+        let key = path_key(path);
+        match self
+            .data
+            .projects
+            .iter_mut()
+            .find(|project| path_key(&project.path) == key)
+        {
+            Some(project) => {
+                project.launch_args = args;
+                true
+            }
+            None => false,
         }
     }
 

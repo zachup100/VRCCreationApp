@@ -74,9 +74,9 @@ export function useActions() {
 				setPackageImport(null);
 			}
 		},
-		open: (project: ProjectInfo) =>
+		open: (project: ProjectInfo, editorVersion?: string) =>
 			guard(async () => {
-				await openProject(project.path);
+				await openProject(project.path, editorVersion);
 				notify("info", `Opening ${project.name} in Unity`);
 				await refreshProjects();
 			}),

@@ -5,11 +5,26 @@ use std::path::PathBuf;
 
 const FILE_NAME: &str = "preferences.json";
 
+#[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    #[serde(default)]
+    pub default_project_location: Option<String>,
+    #[serde(default)]
+    pub backup_location: Option<String>,
+    #[serde(default)]
+    pub show_prerelease: bool,
+    #[serde(default)]
+    pub default_unity_args: String,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct PrefsFile {
     #[serde(default)]
     hidden_repositories: Vec<String>,
+    #[serde(flatten)]
+    settings: AppSettings,
 }
 
 pub struct Prefs {
@@ -40,6 +55,14 @@ impl Prefs {
         if hidden {
             self.data.hidden_repositories.push(id.to_string());
         }
+    }
+
+    pub fn settings(&self) -> &AppSettings {
+        &self.data.settings
+    }
+
+    pub fn settings_mut(&mut self) -> &mut AppSettings {
+        &mut self.data.settings
     }
 
     pub fn save(&self) -> io::Result<()> {

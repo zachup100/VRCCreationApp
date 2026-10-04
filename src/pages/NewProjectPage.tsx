@@ -17,11 +17,11 @@ function joinPath(location: string, name: string): string {
 }
 
 export function NewProjectPage() {
-	const { navigate, notify, editors, editorsLoading, refreshProjects, setPackageOperation } = useApp();
+	const { navigate, notify, editors, editorsLoading, refreshProjects, setPackageOperation, settings } = useApp();
 	const [templates, setTemplates] = useState<TemplateInfo[]>([]);
 	const [template, setTemplate] = useState("");
 	const [name, setName] = useState("New Project");
-	const [location, setLocation] = useState(loadLastLocation);
+	const [location, setLocation] = useState(() => settings.defaultProjectLocation ?? loadLastLocation());
 	const [creating, setCreating] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 

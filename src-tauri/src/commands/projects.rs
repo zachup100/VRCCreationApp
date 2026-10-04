@@ -1,3 +1,5 @@
+use crate::args::split_args;
+use crate::prefs::Prefs;
 use crate::store::{now_millis, path_key, ProjectStore, StoredProject};
 use crate::vpm::VpmContext;
 use serde::Serialize;
@@ -18,6 +20,7 @@ pub struct ProjectInfo {
     category: String,
     favorite: bool,
     last_modified: i64,
+    launch_args: Option<String>,
     exists: bool,
 }
 
@@ -53,6 +56,7 @@ pub(crate) fn to_info(project: &StoredProject) -> ProjectInfo {
         category: project.category.clone(),
         favorite: project.favorite,
         last_modified: project.last_modified,
+        launch_args: project.launch_args.clone(),
     }
 }
 
@@ -95,6 +99,7 @@ pub async fn add_project(
         favorite: false,
         added_at: now_millis(),
         last_modified: now_millis(),
+        launch_args: None,
     };
     let mut store = lock(&state)?;
     if !store.insert(stored.clone()) {
@@ -172,6 +177,7 @@ pub async fn import_from_vcc(
                     favorite: project.favorite(),
                     added_at: added,
                     last_modified: modified,
+                    launch_args: None,
                 })
             })
             .collect()
@@ -199,20 +205,34 @@ pub async fn import_from_vcc(
 #[tauri::command]
 pub async fn open_project(
     path: String,
+    editor_version: Option<String>,
     vpm: State<'_, VpmContext>,
     state: State<'_, Mutex<ProjectStore>>,
+    prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
     let _busy = vpm.try_busy()?;
-    let version = {
+    let (project_version, project_args) = {
         let store = lock(&state)?;
         let project = store
             .find(&path)
             .ok_or_else(|| "This project is not in the list".to_string())?;
-        project
-            .unity_version
-            .clone()
-            .ok_or_else(|| "The Unity version of this project is unknown".to_string())?
+        (project.unity_version.clone(), project.launch_args.clone())
     };
+    let version = editor_version
+        .or(project_version)
+        .ok_or_else(|| "The Unity version of this project is unknown".to_string())?;
+    let default_args = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .settings()
+        .default_unity_args
+        .clone();
+    let args = split_args(
+        project_args
+            .as_deref()
+            .filter(|text| !text.trim().is_empty())
+            .unwrap_or(&default_args),
+    )?;
     if !Path::new(&path).is_dir() {
         return Err("The project folder no longer exists".to_string());
     }
@@ -227,10 +247,33 @@ pub async fn open_project(
     std::process::Command::new(executable)
         .arg("-projectPath")
         .arg(&path)
+        .args(args)
         .spawn()
         .map_err(|error| format!("Could not start Unity: {error}"))?;
     let mut store = lock(&state)?;
     store.touch(&path);
+    store.save().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn set_project_launch_args(
+    path: String,
+    args: String,
+    vpm: State<'_, VpmContext>,
+    state: State<'_, Mutex<ProjectStore>>,
+) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
+    split_args(&args)?;
+    let trimmed = args.trim();
+    let value = if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    };
+    let mut store = lock(&state)?;
+    if !store.set_launch_args(&path, value) {
+        return Err("This project is not in the list".to_string());
+    }
     store.save().map_err(|error| error.to_string())
 }
 

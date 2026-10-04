@@ -1,4 +1,5 @@
 import { getVersion } from "@tauri-apps/api/app";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
@@ -6,7 +7,7 @@ import { repositoriesInfo, repositoryRemove, repositorySetHidden } from "../api"
 import type { CommunityRepository, RepositoriesInfo } from "../api";
 import { AddRepositoryModal } from "../components/AddRepositoryModal";
 import { Button, IconButton } from "../components/Button";
-import { Checkbox, ConfirmModal, EmptyState, Select, Tabs } from "../components/Controls";
+import { Checkbox, ConfirmModal, EmptyState, Select, Switch, Tabs } from "../components/Controls";
 import type { Tab } from "../components/Controls";
 import { Icon } from "../components/Icons";
 import { errorMessage } from "../format";
@@ -27,6 +28,100 @@ function ImportPackagesButton() {
 		<Button icon="package" disabled={progress !== null} onClick={() => void actions.importPackagesVcc()}>
 			{progress ? (progress.total > 0 ? `Importing ${progress.done}/${progress.total}...` : "Importing...") : "Import Packages From VCC"}
 		</Button>
+	);
+}
+
+function FolderSetting({
+	title,
+	description,
+	value,
+	onChange,
+}: {
+	title: string;
+	description: string;
+	value: string | null;
+	onChange: (folder: string) => void;
+}) {
+	const { notify } = useApp();
+	const pick = async () => {
+		try {
+			const folder = await open({ directory: true, multiple: false, title });
+			if (typeof folder === "string") {
+				onChange(folder);
+			}
+		} catch (error) {
+			notify("error", errorMessage(error));
+		}
+	};
+	return (
+		<div className="setting">
+			<div>
+				<strong>{title}</strong>
+				<p className="muted">{description}</p>
+			</div>
+			<div className="setting-path">
+				<span className="path" title={value ?? ""}>
+					{value ?? "Not set"}
+				</span>
+				<Button icon="folderOpen" onClick={() => void pick()}>
+					Pick Folder
+				</Button>
+				{value && (
+					<Button variant="ghost" onClick={() => onChange("")}>
+						Clear
+					</Button>
+				)}
+			</div>
+		</div>
+	);
+}
+
+function ProjectSettings() {
+	const { settings, updateSettings } = useApp();
+	const [args, setArgs] = useState(settings.defaultUnityArgs);
+	useEffect(() => setArgs(settings.defaultUnityArgs), [settings.defaultUnityArgs]);
+	return (
+		<section className="settings-section">
+			<h2>Projects</h2>
+			<div className="card setting-list">
+				<FolderSetting
+					title="Default Project Location"
+					description="New projects are created here unless you pick another folder."
+					value={settings.defaultProjectLocation}
+					onChange={(folder) => void updateSettings({ defaultProjectLocation: folder })}
+				/>
+				<FolderSetting
+					title="Backup Folder"
+					description="Where project backups will be stored. Used by project backups and migration once they are added."
+					value={settings.backupLocation}
+					onChange={(folder) => void updateSettings({ backupLocation: folder })}
+				/>
+				<div className="setting">
+					<div>
+						<strong>Default Unity Launch Arguments</strong>
+						<p className="muted">Added when opening any project. A project&apos;s own launch options take priority.</p>
+					</div>
+					<form
+						className="setting-args"
+						onSubmit={(event) => {
+							event.preventDefault();
+							void updateSettings({ defaultUnityArgs: args });
+						}}
+					>
+						<input
+							type="text"
+							value={args}
+							placeholder="-vrcSdkLogging"
+							aria-label="Default Unity launch arguments"
+							onChange={(event) => setArgs(event.target.value)}
+						/>
+						<Button type="submit" disabled={args.trim() === settings.defaultUnityArgs}>
+							Save
+						</Button>
+					</form>
+				</div>
+			</div>
+		</section>
 	);
 }
 
@@ -78,6 +173,7 @@ function GeneralTab() {
 					)}
 				</div>
 			</section>
+			<ProjectSettings />
 			<section className="settings-section">
 				<div className="section-head">
 					<div>
@@ -93,6 +189,30 @@ function GeneralTab() {
 				</div>
 			</section>
 		</>
+	);
+}
+
+function PrereleaseSetting() {
+	const { settings, updateSettings } = useApp();
+	return (
+		<div className="settings-section">
+			<h2>Pre-Release Packages</h2>
+			<div className="card setting-list">
+				<div className="setting">
+					<div>
+						<strong>Show pre-release packages</strong>
+						<p className="muted">
+							Pre-release versions are for testing and can be unstable. When on, they appear in package lists and count as the latest version.
+						</p>
+					</div>
+					<Switch
+						label="Show pre-release packages"
+						checked={settings.showPrerelease}
+						onChange={(checked) => void updateSettings({ showPrerelease: checked })}
+					/>
+				</div>
+			</div>
+		</div>
 	);
 }
 
@@ -192,6 +312,7 @@ function PackagesTab() {
 					}}
 				/>
 			)}
+			<PrereleaseSetting />
 			{pendingRemove && (
 				<ConfirmModal
 					title="Remove Repository"

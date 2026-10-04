@@ -8,6 +8,7 @@ import { EmptyState, Select, SearchInput } from "../components/Controls";
 import { ReviewChangesModal } from "../components/ReviewChangesModal";
 import { Icon } from "../components/Icons";
 import { SplitButton } from "../components/Menu";
+import { useProjectDialogs } from "../components/ProjectDialogs";
 import { TypeBadge, VersionChip, hasEditor } from "../components/ProjectParts";
 import { errorMessage, timeAgo } from "../format";
 
@@ -151,6 +152,7 @@ function PackageTable({
 export function ManageProjectPage({ path }: { path: string }) {
 	const { projects, editors, editorsLoading, navigate, notify, setPackageOperation } = useApp();
 	const actions = useActions();
+	const dialogs = useProjectDialogs();
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<RepoFilter>("all");
 	const [packages, setPackages] = useState<PackagesState>({ status: "loading" });
@@ -267,6 +269,8 @@ export function ManageProjectPage({ path }: { path: string }) {
 					disabled={working}
 					onClick={() => void actions.open(project)}
 					items={[
+						{ label: "Open With...", icon: "unity", disabled: !project.exists, onSelect: () => dialogs.openWith(project) },
+						{ label: "Launch Options...", icon: "settings", onSelect: () => dialogs.launchOptions(project) },
 						{ label: "Open Folder", icon: "folderOpen", disabled: !project.exists, onSelect: () => void actions.openFolder(project) },
 						{ label: "Copy Path", icon: "copy", onSelect: () => void actions.copyPath(project) },
 					]}
@@ -379,6 +383,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 					</Button>
 				</div>
 			)}
+			{dialogs.element}
 			{review && (
 				<ReviewChangesModal summary={review.summary} busy={working} onApply={() => void apply()}
 					onClose={() => {

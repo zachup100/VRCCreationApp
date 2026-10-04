@@ -1,3 +1,4 @@
+mod args;
 mod commands;
 mod prefs;
 mod prereq;
@@ -43,6 +44,9 @@ pub fn run() {
             commands::projects::import_from_vcc,
             commands::projects::open_project,
             commands::projects::open_project_folder,
+            commands::projects::set_project_launch_args,
+            commands::settings::get_settings,
+            commands::settings::update_settings,
             commands::packages::project_packages,
             commands::create::list_templates,
             commands::create::create_project,

@@ -1,3 +1,4 @@
+use crate::prefs::Prefs;
 use crate::store::ProjectStore;
 use crate::vpm::VpmContext;
 use serde::{Deserialize, Serialize};
@@ -163,6 +164,7 @@ async fn plan_installs<'env>(
     project: &UnityProject,
     collection: &'env vrc_get_vpm::environment::PackageCollection,
     installs: &[InstallRequest],
+    allow_prerelease: bool,
 ) -> Result<PendingProjectChanges<'env>, String> {
     let mut packages = Vec::with_capacity(installs.len());
     for install in installs {
@@ -174,7 +176,7 @@ async fn plan_installs<'env>(
         packages.push(package);
     }
     project
-        .add_package_request(collection, &packages, AddPackageOperation::AutoDetected, false)
+        .add_package_request(collection, &packages, AddPackageOperation::AutoDetected, allow_prerelease)
         .await
         .map_err(|error| error.to_string())
 }
@@ -188,6 +190,14 @@ async fn plan_removes(
         .remove_request(&names)
         .await
         .map_err(|error| error.to_string())
+}
+
+fn prerelease_enabled(prefs: &State<'_, Mutex<Prefs>>) -> Result<bool, String> {
+    Ok(prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .settings()
+        .show_prerelease)
 }
 
 fn merge(mut first: ChangeSummary, second: ChangeSummary) -> ChangeSummary {
@@ -207,7 +217,9 @@ pub async fn project_plan_changes(
     request: ChangeRequest,
     vpm: State<'_, VpmContext>,
     store: State<'_, Mutex<ProjectStore>>,
+    prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<ChangeSummary, String> {
+    let allow_prerelease = prerelease_enabled(&prefs)?;
     if request.installs.is_empty() && request.removes.is_empty() {
         return Err("No package changes were selected".to_string());
     }
@@ -224,7 +236,7 @@ pub async fn project_plan_changes(
     let install_summary = if request.installs.is_empty() {
         None
     } else {
-        let changes = plan_installs(&project, &collection, &request.installs).await?;
+        let changes = plan_installs(&project, &collection, &request.installs, allow_prerelease).await?;
         Some(summarize(&project, &changes))
     };
 
@@ -241,7 +253,9 @@ pub async fn project_apply_changes(
     request: ChangeRequest,
     vpm: State<'_, VpmContext>,
     store: State<'_, Mutex<ProjectStore>>,
+    prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
+    let allow_prerelease = prerelease_enabled(&prefs)?;
     if request.installs.is_empty() && request.removes.is_empty() {
         return Err("No package changes were selected".to_string());
     }
@@ -263,7 +277,7 @@ pub async fn project_apply_changes(
 
     if !request.installs.is_empty() {
         let mut project = load_project(&path, &store).await?;
-        let changes = plan_installs(&project, &collection, &request.installs).await?;
+        let changes = plan_installs(&project, &collection, &request.installs, allow_prerelease).await?;
         if !changes.conflicts().is_empty() {
             return Err("These changes have conflicts and cannot be applied".to_string());
         }
