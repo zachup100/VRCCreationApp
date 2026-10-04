@@ -49,7 +49,7 @@ portable() {
     local source="$1"
     if [ -f "$source" ]; then
         mkdir -p "$OUT"
-        cp "$source" "$OUT/VRCreationApp-$VERSION-portable.exe"
+        cp "$source" "$OUT/VRCCreationApp-$VERSION-portable.exe"
     fi
 }
 
@@ -64,7 +64,7 @@ build_windows() {
         windows)
             if npm run tauri build -- --bundles nsis,msi; then
                 local base="src-tauri/target/release"
-                portable "$base/vr-creation-app.exe"
+                portable "$base/vrccreationapp.exe"
                 collect "$base/bundle/nsis/*.exe" "$base/bundle/msi/*.msi"
             else
                 return 1
@@ -82,7 +82,7 @@ build_windows() {
             rustup target add x86_64-pc-windows-msvc >/dev/null 2>&1
             if npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis; then
                 local base="src-tauri/target/x86_64-pc-windows-msvc/release"
-                portable "$base/vr-creation-app.exe"
+                portable "$base/vrccreationapp.exe"
                 collect "$base/bundle/nsis/*.exe"
             else
                 return 1

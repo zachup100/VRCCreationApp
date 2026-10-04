@@ -1,6 +1,6 @@
-# VRCreationApp
+# VRCCreationApp
 
-An open-source desktop app for managing VRChat Unity projects and VPM packages. Its layout and flows follow the VRChat Creator Companion, and it is built on [vrc-get](https://github.com/vrc-get/vrc-get) and [Tauri](https://tauri.app).
+An open-source desktop app, published by zachLabs, for managing VRChat Unity projects and VPM packages. Its layout and flows follow the VRChat Creator Companion, and it is built on [vrc-get](https://github.com/vrc-get/vrc-get) and [Tauri](https://tauri.app).
 
 It is not made or endorsed by VRChat. VRChat and its logos belong to VRChat Inc. This app uses its own name, icon and artwork.
 
@@ -28,7 +28,7 @@ Unity is not bundled. Install Unity Hub and the Unity version your projects use 
 
 ## Where your data is
 
-Everything is stored in `%APPDATA%\dev.vrcreationapp.app`:
+Everything is stored in `%APPDATA%\net.zachlabs.vrccreationapp.main`:
 
 - `projects.json`, `presets.json` and `preferences.json` for your lists and settings.
 - `vpm\` for repository settings and the package cache.

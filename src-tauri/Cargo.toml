@@ -1,12 +1,13 @@
 [package]
-name = "vr-creation-app"
+name = "vrccreationapp"
 version = "0.1.0"
-description = "Open-source VCC-alike GUI"
+description = "Open-source manager for VRChat projects and VPM packages"
+authors = ["zachLabs"]
 edition = "2021"
 license = "MIT"
 
 [lib]
-name = "vr_creation_app_lib"
+name = "vrccreationapp_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

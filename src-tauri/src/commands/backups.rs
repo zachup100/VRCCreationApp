@@ -1,6 +1,6 @@
 use crate::applog::log;
 use crate::commands::create::validate_name;
-use crate::commands::migrate::{backup_directory, emit, BackupMeta, TaskProgress, BACKUP_MARKER};
+use crate::commands::migrate::{backup_directory, emit, BackupMeta, TaskProgress, BACKUP_MARKER, LEGACY_BACKUP_MARKER};
 use crate::commands::projects::{category_of, detect_type, to_info, vpm_category, ProjectInfo};
 use crate::prefs::Prefs;
 use crate::store::{now_millis, ProjectStore, StoredProject};
@@ -74,7 +74,7 @@ fn read_backup(path: &Path) -> Option<BackupInfo> {
     let mut archive = ZipArchive::new(BufReader::new(File::open(path).ok()?)).ok()?;
 
     if let Ok(meta) = serde_json::from_slice::<BackupMeta>(archive.comment()) {
-        if meta.app == BACKUP_MARKER {
+        if meta.app == BACKUP_MARKER || meta.app == LEGACY_BACKUP_MARKER {
             let derived = read_text(&mut archive, &format!("{}/Packages/vpm-manifest.json", meta.project_name))
                 .and_then(|text| category_from_manifest(&text));
             return Some(BackupInfo {
@@ -514,5 +514,16 @@ mod tests {
         let meta = r#"{"app":"VRCreationApp","version":1,"projectName":"Legacy","category":"legacy-world","unityVersion":"2019.4.31f1","createdAt":1}"#;
         plain_zip(&path, &[("Legacy/Assets/a.txt", "x")], Some(meta));
         assert_eq!(read_backup(&path).unwrap().category, "legacy-world");
+    }
+
+    #[test]
+    fn backups_made_under_the_new_and_the_old_app_name_are_both_recognised() {
+        let dir = tempfile::tempdir().unwrap();
+        for (index, app) in ["VRCCreationApp", "VRCreationApp"].iter().enumerate() {
+            let path = dir.path().join(format!("P{index}-2026-10-03_21-30-0{index}.zip"));
+            let meta = format!(r#"{{"app":"{app}","version":1,"projectName":"P{index}","category":"world","unityVersion":"2022.3.22f1","createdAt":1}}"#);
+            plain_zip(&path, &[(&format!("P{index}/Assets/a.txt"), "x")], Some(&meta));
+            assert!(read_backup(&path).is_some(), "{app} should be recognised");
+        }
     }
 }

@@ -17,7 +17,8 @@ use vrc_get_vpm::unity_hub;
 use vrc_get_vpm::{ProjectType, UnityProject, VRCHAT_RECOMMENDED_2022_UNITY};
 
 const EVENT: &str = "project-task";
-pub(crate) const BACKUP_MARKER: &str = "VRCreationApp";
+pub(crate) const BACKUP_MARKER: &str = "VRCCreationApp";
+pub(crate) const LEGACY_BACKUP_MARKER: &str = "VRCreationApp";
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

@@ -4716,31 +4716,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
-name = "vr-creation-app"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "futures",
- "include_dir",
- "indexmap 2.14.2",
- "open",
- "pin-project-lite",
- "reqwest",
- "rfd 0.17.2",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tempfile",
- "tokio",
- "uuid",
- "vrc-get-vpm",
- "winreg 0.56.0",
- "zip",
-]
-
-[[package]]
 name = "vrc-get-litedb"
 version = "0.3.0-beta.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4797,6 +4772,31 @@ dependencies = [
  "vrc-get-litedb",
  "windows 0.62.2",
  "winreg 0.56.0",
+]
+
+[[package]]
+name = "vrccreationapp"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "include_dir",
+ "indexmap 2.14.2",
+ "open",
+ "pin-project-lite",
+ "reqwest",
+ "rfd 0.17.2",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "vrc-get-vpm",
+ "winreg 0.56.0",
+ "zip",
 ]
 
 [[package]]

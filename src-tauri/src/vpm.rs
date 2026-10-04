@@ -21,7 +21,7 @@ impl VpmContext {
     pub fn new(folder: PathBuf) -> Result<Self, String> {
         std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
         let http = reqwest::Client::builder()
-            .user_agent(concat!("VRCreationApp/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("VRCCreationApp/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(60))
             .build()

@@ -1,8 +1,8 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "VRCreationApp",
+	"productName": "VRCCreationApp",
 	"version": "0.1.0",
-	"identifier": "dev.vrcreationapp.app",
+	"identifier": "net.zachlabs.vrccreationapp.main",
 	"build": {
 		"beforeDevCommand": "npm run dev",
 		"devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
 	"app": {
 		"windows": [
 			{
-				"title": "VRCreationApp",
+				"title": "VRCCreationApp",
 				"width": 1100,
 				"height": 720,
 				"minWidth": 800,
@@ -48,6 +48,7 @@
 		],
 		"category": "DeveloperTool",
 		"shortDescription": "Manage VRChat projects and VPM packages",
-		"longDescription": "An open-source manager for VRChat Unity projects and VPM packages, built on vrc-get. It creates, backs up, migrates and duplicates projects and installs, upgrades and removes packages. It is not made or endorsed by VRChat."
+		"longDescription": "An open-source manager for VRChat Unity projects and VPM packages, built on vrc-get. It creates, backs up, migrates and duplicates projects and installs, upgrades and removes packages. It is not made or endorsed by VRChat.",
+		"publisher": "zachLabs"
 	}
 }

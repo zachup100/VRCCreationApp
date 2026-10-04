@@ -29,7 +29,7 @@ const titles: Record<string, string> = {
 function Page() {
 	const { route } = useApp();
 	useEffect(() => {
-		document.title = `${titles[route.page] ?? "VRCreationApp"} - VRCreationApp`;
+		document.title = `${titles[route.page] ?? "VRCCreationApp"} - VRCCreationApp`;
 	}, [route.page]);
 	switch (route.page) {
 		case "projects":

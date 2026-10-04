@@ -157,8 +157,8 @@ function AboutSection() {
 			<div className="card setting-list">
 				<SettingRow
 					icon="info"
-					title={version ? `VRCreationApp ${version}` : "VRCreationApp"}
-					description="An open-source manager for VRChat projects and VPM packages, built on vrc-get. It is not made or endorsed by VRChat."
+					title={version ? `VRCCreationApp ${version}` : "VRCCreationApp"}
+					description="An open-source manager for VRChat projects and VPM packages, published by zachLabs and built on vrc-get. It is not made or endorsed by VRChat."
 				>
 					<Button icon="book" onClick={() => setShowLicenses(true)}>
 						Open Source Licenses
