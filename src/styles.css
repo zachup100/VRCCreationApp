@@ -390,7 +390,11 @@ button:disabled {
 }
 
 .table {
-	overflow: hidden;
+	overflow: visible;
+}
+
+.table-head {
+	border-radius: 10px 10px 0 0;
 }
 
 .table-head,
@@ -846,7 +850,23 @@ code {
 
 .table-head.packages,
 .row.packages {
-	grid-template-columns: minmax(200px, 2.2fr) minmax(120px, 1fr) minmax(130px, 1fr) 110px;
+	grid-template-columns: minmax(200px, 2.2fr) minmax(150px, 1.1fr) minmax(130px, 1fr) 100px 44px;
+}
+
+.pkg-action {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.row.packages .select-trigger {
+	min-width: 0;
+	width: 100%;
+	max-width: 200px;
+}
+
+.row.packages .select .menu {
+	max-height: 260px;
+	overflow-y: auto;
 }
 
 .row.packages {
@@ -1265,4 +1285,62 @@ code {
 .disclaimer {
 	font-size: 14px;
 	line-height: 1.5;
+}
+
+.change-block {
+	margin: 10px 0;
+	align-items: flex-start;
+}
+
+.change-list {
+	margin: 8px 0 0;
+	padding: 0;
+	list-style: none;
+	color: var(--text);
+}
+
+.change-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 6px 0;
+}
+
+.change-row .tag {
+	margin-left: 0;
+	min-width: 64px;
+	text-align: center;
+}
+
+.kind-new,
+.kind-upgrade {
+	color: var(--success);
+	border-color: var(--success);
+}
+
+.kind-downgrade {
+	color: var(--warn);
+	border-color: var(--warn);
+}
+
+.kind-remove {
+	color: var(--danger);
+	border-color: var(--danger);
+}
+
+.legacy-list {
+	max-height: 140px;
+	overflow-y: auto;
+}
+
+.link-btn {
+	background: none;
+	border: none;
+	padding: 0;
+	color: var(--accent-hover);
+	text-decoration: underline;
+}
+
+.select-trigger.muted {
+	color: var(--muted);
 }

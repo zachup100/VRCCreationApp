@@ -117,12 +117,16 @@ export function Select<T extends string>({
 	onChange,
 	label,
 	disabled,
+	placeholder,
+	muted,
 }: {
 	value: T;
 	options: SelectOption<T>[];
 	onChange: (value: T) => void;
 	label: string;
 	disabled?: boolean;
+	placeholder?: string;
+	muted?: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const ref = useRef<HTMLDivElement>(null);
@@ -152,14 +156,14 @@ export function Select<T extends string>({
 		<div className="select menu-anchor" ref={ref}>
 			<button
 				type="button"
-				className="select-trigger"
+				className={`select-trigger${muted ? " muted" : ""}`}
 				aria-label={label}
 				aria-haspopup="listbox"
 				aria-expanded={open}
 				disabled={disabled}
 				onClick={() => setOpen((state) => !state)}
 			>
-				<span>{current?.label ?? ""}</span>
+				<span>{muted && placeholder ? placeholder : (current?.label ?? "")}</span>
 				<Icon name="chevronDown" size={16} />
 			</button>
 			{open && (

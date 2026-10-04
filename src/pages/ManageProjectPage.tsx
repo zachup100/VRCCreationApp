@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
-import { projectPackages } from "../api";
-import type { PackageRow, PackageSource } from "../api";
+import { projectApplyChanges, projectPackages, projectPlanChanges } from "../api";
+import type { ChangeRequest, ChangeSummary, PackageRow, PackageSource } from "../api";
 import { Button, IconButton } from "../components/Button";
 import { EmptyState, Select, SearchInput } from "../components/Controls";
+import { ReviewChangesModal } from "../components/ReviewChangesModal";
 import { Icon } from "../components/Icons";
 import { SplitButton } from "../components/Menu";
 import { TypeBadge, VersionChip, hasEditor } from "../components/ProjectParts";
@@ -32,7 +33,20 @@ type PackagesState =
 	| { status: "error"; message: string }
 	| { status: "ready"; rows: PackageRow[] };
 
-function PackageTable({ rows, query, filter }: { rows: PackageRow[]; query: string; filter: RepoFilter }) {
+function PackageTable({
+	rows,
+	query,
+	filter,
+	busy,
+	onChange,
+}: {
+	rows: PackageRow[];
+	query: string;
+	filter: RepoFilter;
+	busy: boolean;
+	onChange: (request: ChangeRequest) => void;
+}) {
+	const [targets, setTargets] = useState<Record<string, string>>({});
 	const visible = useMemo(() => {
 		const needle = query.trim().toLowerCase();
 		return rows.filter(
@@ -54,25 +68,68 @@ function PackageTable({ rows, query, filter }: { rows: PackageRow[]; query: stri
 
 	return (
 		<div className="table-body">
-			{visible.map((row) => (
-				<div key={row.name} className={`row packages${row.installedVersion ? "" : " not-installed"}`}>
-					<div className="pkg-name">
-						<Icon name="package" size={22} />
+			{visible.map((row) => {
+				const installed = row.installedVersion !== null;
+				const target = targets[row.name] ?? row.installedVersion ?? row.latestVersion ?? "";
+				const options = row.versions.map((version) => ({ value: version, label: version }));
+				return (
+					<div key={row.name} className={`row packages${installed ? "" : " not-installed"}`}>
+						<div className="pkg-name">
+							<Icon name="package" size={22} />
+							<div>
+								<strong title={row.name}>{row.displayName}</strong>
+								{row.displayName !== row.name && <span className="path">{row.name}</span>}
+							</div>
+						</div>
 						<div>
-							<strong title={row.name}>{row.displayName}</strong>
-							{row.displayName !== row.name && <span className="path">{row.name}</span>}
+							{options.length > 0 ? (
+								<Select
+									label={`Version of ${row.displayName}`}
+									value={target}
+									disabled={busy}
+									options={options}
+									placeholder={installed ? undefined : "Not Installed"}
+									muted={!installed && !(row.name in targets)}
+									onChange={(version) => {
+										if (installed && version !== row.installedVersion) {
+											onChange({ installs: [{ name: row.name, version }], removes: [] });
+										} else {
+											setTargets((current) => ({ ...current, [row.name]: version }));
+										}
+									}}
+								/>
+							) : (
+								<span className="muted">{row.installedVersion ?? "Not Installed"}</span>
+							)}
+						</div>
+						<div className="latest">
+							{row.latestVersion ?? <span className="muted">None</span>}
+							{row.hasUpdate && <span className="tag update">Update</span>}
+						</div>
+						<div className="muted" title={row.repository ?? undefined}>
+							{sourceLabels[row.source]}
+						</div>
+						<div className="pkg-action">
+							{installed ? (
+								<IconButton
+									icon="minusCircle"
+									label={`Remove ${row.displayName}`}
+									className="remove"
+									disabled={busy}
+									onClick={() => onChange({ installs: [], removes: [row.name] })}
+								/>
+							) : (
+								<IconButton
+									icon="plusCircle"
+									label={`Install ${row.displayName}`}
+									disabled={busy || !target}
+									onClick={() => onChange({ installs: [{ name: row.name, version: target }], removes: [] })}
+								/>
+							)}
 						</div>
 					</div>
-					<div className={row.installedVersion ? "" : "muted"}>{row.installedVersion ?? "Not Installed"}</div>
-					<div className="latest">
-						{row.latestVersion ?? <span className="muted">None</span>}
-						{row.hasUpdate && <span className="tag update">Update</span>}
-					</div>
-					<div className="muted" title={row.repository ?? undefined}>
-						{sourceLabels[row.source]}
-					</div>
-				</div>
-			))}
+				);
+			})}
 		</div>
 	);
 }
@@ -84,6 +141,8 @@ export function ManageProjectPage({ path }: { path: string }) {
 	const [filter, setFilter] = useState<RepoFilter>("all");
 	const [packages, setPackages] = useState<PackagesState>({ status: "loading" });
 	const [refreshing, setRefreshing] = useState(false);
+	const [review, setReview] = useState<{ request: ChangeRequest; summary: ChangeSummary } | null>(null);
+	const [working, setWorking] = useState(false);
 	const project = projects.find((item) => item.path === path);
 	const projectExists = project?.exists ?? false;
 
@@ -104,6 +163,36 @@ export function ManageProjectPage({ path }: { path: string }) {
 		},
 		[path, notify],
 	);
+
+	const plan = async (request: ChangeRequest) => {
+		setWorking(true);
+		try {
+			setReview({ request, summary: await projectPlanChanges(path, request) });
+		} catch (error) {
+			notify("error", errorMessage(error));
+		} finally {
+			setWorking(false);
+		}
+	};
+
+	const apply = async () => {
+		if (!review) {
+			return;
+		}
+		setWorking(true);
+		try {
+			await projectApplyChanges(path, review.request);
+			notify("success", "Package changes applied");
+			setReview(null);
+			await load(false);
+		} catch (error) {
+			notify("error", errorMessage(error));
+		} finally {
+			setWorking(false);
+		}
+	};
+
+	const updatable = packages.status === "ready" ? packages.rows.filter((row) => row.hasUpdate && row.latestVersion) : [];
 
 	useEffect(() => {
 		if (projectExists) {
@@ -181,6 +270,21 @@ export function ManageProjectPage({ path }: { path: string }) {
 					onClick={() => void load(true)}
 				/>
 				<span className="spacer" />
+				{updatable.length > 0 && (
+					<Button
+						variant="success"
+						icon="upload"
+						disabled={working}
+						onClick={() =>
+							void plan({
+								installs: updatable.map((row) => ({ name: row.name, version: row.latestVersion ?? "" })),
+								removes: [],
+							})
+						}
+					>
+						Upgrade All ({updatable.length})
+					</Button>
+				)}
 				<SearchInput value={query} onChange={setQuery} placeholder="Search Packages..." />
 				<span className="label-inline">Selected Repos</span>
 				<Select
@@ -196,6 +300,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 					<span className="th">Installed Version</span>
 					<span className="th">Latest Version</span>
 					<span className="th">Source</span>
+					<span className="th" />
 				</div>
 				{packages.status === "loading" && (
 					<EmptyState icon="package" title="Loading packages">
@@ -215,8 +320,13 @@ export function ManageProjectPage({ path }: { path: string }) {
 						{packages.message}
 					</EmptyState>
 				)}
-				{packages.status === "ready" && <PackageTable rows={packages.rows} query={query} filter={filter} />}
+				{packages.status === "ready" && (
+					<PackageTable rows={packages.rows} query={query} filter={filter} busy={working} onChange={(request) => void plan(request)} />
+				)}
 			</div>
+			{review && (
+				<ReviewChangesModal summary={review.summary} busy={working} onApply={() => void apply()} onClose={() => setReview(null)} />
+			)}
 			<div className="page-foot">
 				<Button variant="ghost" onClick={() => navigate({ page: "projects" })}>
 					Back to projects

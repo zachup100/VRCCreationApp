@@ -127,3 +127,35 @@ export interface ProjectPackages {
 export function projectPackages(path: string, refresh: boolean): Promise<ProjectPackages> {
 	return invoke<ProjectPackages>("project_packages", { path, refresh });
 }
+
+export interface ChangeRequest {
+	installs: { name: string; version: string }[];
+	removes: string[];
+}
+
+export interface ChangeSummary {
+	installs: {
+		name: string;
+		displayName: string;
+		version: string;
+		previousVersion: string | null;
+		kind: "new" | "upgrade" | "downgrade" | "reinstall";
+	}[];
+	removes: { name: string; reason: "requested" | "legacy" | "unused" }[];
+	conflicts: {
+		package: string;
+		conflictingPackages: string[];
+		conflictsWithUnity: boolean;
+		unlockedNames: string[];
+	}[];
+	legacyFiles: string[];
+	legacyFolders: string[];
+}
+
+export function projectPlanChanges(path: string, request: ChangeRequest): Promise<ChangeSummary> {
+	return invoke<ChangeSummary>("project_plan_changes", { path, request });
+}
+
+export function projectApplyChanges(path: string, request: ChangeRequest): Promise<void> {
+	return invoke<void>("project_apply_changes", { path, request });
+}

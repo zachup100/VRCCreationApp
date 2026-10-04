@@ -13,6 +13,7 @@ pub struct VpmContext {
     pub io: DefaultEnvironmentIo,
     pub http: reqwest::Client,
     pub lock: Mutex<()>,
+    pub ops: Mutex<()>,
     collection: Mutex<Option<Arc<PackageCollection>>>,
 }
 
@@ -28,6 +29,7 @@ impl VpmContext {
             io: DefaultEnvironmentIo::new(folder.into_boxed_path()),
             http,
             lock: Mutex::new(()),
+            ops: Mutex::new(()),
             collection: Mutex::new(None),
         })
     }
