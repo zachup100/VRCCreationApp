@@ -9,7 +9,6 @@ use std::sync::Mutex;
 use tauri::{AppHandle, State};
 use vrc_get_vpm::environment::VccDatabaseConnection;
 use vrc_get_vpm::io::{DefaultEnvironmentIo, DefaultProjectIo};
-use vrc_get_vpm::unity_hub;
 use vrc_get_vpm::{ProjectType, UnityProject};
 
 #[derive(Serialize)]
@@ -274,14 +273,7 @@ pub async fn open_project(
     if !Path::new(&path).is_dir() {
         return Err("The project folder no longer exists".to_string());
     }
-    let editors = unity_hub::load_unity_by_loading_unity_hub_files()
-        .await
-        .map_err(|error| error.to_string())?;
-    let editor = editors
-        .iter()
-        .find(|editor| editor.version.to_string() == version)
-        .ok_or_else(|| format!("Unity {version} is not installed"))?;
-    let executable = unity_hub::get_executable_path(&editor.path).into_owned();
+    let executable = crate::editors::executable_for(&prefs, &version).await?;
     let child = std::process::Command::new(executable)
         .arg("-projectPath")
         .arg(&path)

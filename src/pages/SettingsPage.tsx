@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useApp } from "../AppContext";
+import { addCustomEditor, removeCustomEditor } from "../api";
 import { useActions } from "../actions";
 import { Button, IconButton } from "../components/Button";
 import { EmptyState, Select, Tabs } from "../components/Controls";
@@ -171,21 +172,85 @@ function AboutSection() {
 }
 
 function GeneralTab() {
-	const { editors, editorsLoading, editorsError, refreshEditors, projects } = useApp();
+	const { editors, editorsLoading, editorsError, refreshEditors, projects, notify } = useApp();
 	const actions = useActions();
+	const [editorsOpen, setEditorsOpen] = useState(false);
+	const [addingEditor, setAddingEditor] = useState(false);
+
+	const addEditor = async () => {
+		const isWindows = navigator.userAgent.includes("Windows");
+		let selected: string | string[] | null;
+		try {
+			selected = await open({
+				directory: false,
+				multiple: false,
+				title: "Select the Unity editor program",
+				filters: isWindows ? [{ name: "Unity", extensions: ["exe"] }] : undefined,
+			});
+		} catch (error) {
+			notify("error", errorMessage(error));
+			return;
+		}
+		if (typeof selected !== "string") {
+			return;
+		}
+		setAddingEditor(true);
+		try {
+			const added = await addCustomEditor(selected);
+			await refreshEditors();
+			notify("success", `Added Unity ${added.version}`);
+		} catch (error) {
+			notify("error", errorMessage(error));
+		} finally {
+			setAddingEditor(false);
+		}
+	};
+
+	const removeEditor = async (path: string, version: string) => {
+		try {
+			await removeCustomEditor(path);
+			await refreshEditors();
+			notify("info", `Removed Unity ${version} from the list`);
+		} catch (error) {
+			notify("error", errorMessage(error));
+		}
+	};
 	return (
 		<>
 			<section className="settings-section">
 				<div className="section-head">
-					<div>
-						<h2>Unity Editors</h2>
-						<p className="muted">Editors found through Unity Hub and its install folders.</p>
-					</div>
-					<Button icon="refresh" variant="ghost" disabled={editorsLoading} onClick={() => void refreshEditors()}>
-						Rescan
-					</Button>
+					<button
+						type="button"
+						className="collapse-toggle"
+						aria-expanded={editorsOpen}
+						aria-controls="unity-editors-panel"
+						onClick={() => setEditorsOpen((value) => !value)}
+					>
+						<Icon name={editorsOpen ? "chevronUp" : "chevronDown"} size={20} />
+						<span>
+							<span className="collapse-title">Unity Editors</span>
+							<span className="muted">
+								{editorsOpen
+									? "Editors found through Unity Hub and its install folders, plus any you add yourself."
+									: editorsLoading
+										? "Looking for editors..."
+										: `${editors.length} ${editors.length === 1 ? "editor" : "editors"} found`}
+							</span>
+						</span>
+					</button>
+					{editorsOpen && (
+						<div className="button-stack">
+							<Button icon="plusCircle" variant="ghost" disabled={addingEditor} onClick={() => void addEditor()}>
+								{addingEditor ? "Adding..." : "Add Editor"}
+							</Button>
+							<Button icon="refresh" variant="ghost" disabled={editorsLoading} onClick={() => void refreshEditors()}>
+								Rescan
+							</Button>
+						</div>
+					)}
 				</div>
-				<div className="card">
+				{editorsOpen && (
+				<div className="card" id="unity-editors-panel">
 					{editorsError ? (
 						<EmptyState icon="unity" title="Could not read Unity installs">
 							{editorsError}
@@ -207,7 +272,7 @@ function GeneralTab() {
 							{editors.map((editor) => {
 								const used = projects.filter((project) => project.unityVersion === editor.version).length;
 								return (
-									<li key={`${editor.version}-${editor.path}`} className="editor-row">
+									<li key={`${editor.version}-${editor.path}`} className={`editor-row${editor.custom ? " custom" : ""}`}>
 										<span className="editor-icon">
 											<Icon name="unity" size={22} />
 										</span>
@@ -215,6 +280,7 @@ function GeneralTab() {
 											<div className="editor-title">
 												<strong>{editor.version}</strong>
 												{editor.architecture && <span className="chip">{editor.architecture}</span>}
+												{editor.custom && <span className="chip">custom</span>}
 											</div>
 											<span className="editor-path" title={editor.path}>
 												{editor.path}
@@ -223,12 +289,21 @@ function GeneralTab() {
 										<span className={`editor-usage${used === 0 ? " none" : ""}`}>
 											{used === 0 ? "No projects" : `${used} ${used === 1 ? "project" : "projects"}`}
 										</span>
+										{editor.custom && (
+											<IconButton
+												icon="minusCircle"
+												label={`Remove Unity ${editor.version} from the list`}
+												className="remove"
+												onClick={() => void removeEditor(editor.path, editor.version)}
+											/>
+										)}
 									</li>
 								);
 							})}
 						</ul>
 					)}
 				</div>
+				)}
 			</section>
 			<ProjectSettings />
 			<section className="settings-section">

@@ -13,7 +13,6 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
 use vrc_get_vpm::environment::PackageInstaller;
 use vrc_get_vpm::io::DefaultProjectIo;
-use vrc_get_vpm::unity_hub;
 use vrc_get_vpm::{ProjectType, UnityProject, VRCHAT_RECOMMENDED_2022_UNITY};
 
 const EVENT: &str = "project-task";
@@ -340,14 +339,10 @@ pub async fn migrate_project(
                 return Err("Only Unity 2019 projects can be migrated to Unity 2022".to_string());
             }
             let wanted = VRCHAT_RECOMMENDED_2022_UNITY.to_string();
-            let editors = unity_hub::load_unity_by_loading_unity_hub_files()
+            let executable = crate::editors::executable_for(&prefs, &wanted)
                 .await
-                .map_err(|error| error.to_string())?;
-            let editor = editors
-                .iter()
-                .find(|editor| editor.version.to_string() == wanted)
-                .ok_or_else(|| format!("Unity {wanted} is not installed. Install it first, then try again."))?;
-            Some(unity_hub::get_executable_path(&editor.path).into_owned())
+                .map_err(|_| format!("Unity {wanted} is not installed. Install it first, then try again."))?;
+            Some(executable)
         }
     };
 

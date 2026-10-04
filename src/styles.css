@@ -1951,6 +1951,43 @@ code {
 	background: var(--surface-hover);
 }
 
+.editor-row.custom {
+	grid-template-columns: 44px minmax(0, 1fr) auto 34px;
+}
+
+.collapse-toggle {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	flex: 1;
+	min-width: 0;
+	padding: 0;
+	background: transparent;
+	border: none;
+	color: var(--text);
+	text-align: left;
+}
+
+.collapse-toggle > svg {
+	margin-top: 4px;
+	flex-shrink: 0;
+}
+
+.collapse-toggle > span {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.collapse-title {
+	font-size: 22px;
+	font-weight: 600;
+}
+
+.collapse-toggle:hover .collapse-title {
+	color: var(--accent-hover);
+}
+
 .editor-icon,
 .icon-tile {
 	display: grid;

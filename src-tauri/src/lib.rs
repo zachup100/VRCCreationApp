@@ -2,6 +2,7 @@ mod applog;
 mod args;
 mod commands;
 mod download;
+mod editors;
 mod manifest;
 mod prefs;
 mod presets;
@@ -42,6 +43,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::unity::list_unity_editors,
+            commands::unity::add_custom_editor,
+            commands::unity::remove_custom_editor,
             commands::unity::open_external,
             commands::projects::list_projects,
             commands::projects::add_project,

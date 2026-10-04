@@ -4,6 +4,7 @@ export interface UnityEditorInfo {
 	version: string;
 	path: string;
 	architecture: string | null;
+	custom: boolean;
 }
 
 export type ProjectCategory = "avatar" | "world" | "legacy-avatar" | "legacy-world" | "other";
@@ -27,6 +28,14 @@ export interface ImportResult {
 
 export function listUnityEditors(): Promise<UnityEditorInfo[]> {
 	return invoke<UnityEditorInfo[]>("list_unity_editors");
+}
+
+export function addCustomEditor(path: string): Promise<UnityEditorInfo> {
+	return invoke<UnityEditorInfo>("add_custom_editor", { path });
+}
+
+export function removeCustomEditor(path: string): Promise<void> {
+	return invoke<void>("remove_custom_editor", { path });
 }
 
 export function openExternal(url: string): Promise<void> {

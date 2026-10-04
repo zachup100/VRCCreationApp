@@ -18,9 +18,17 @@ pub struct AppSettings {
     pub default_unity_args: String,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CustomEditor {
+    pub path: String,
+    pub version: String,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct PrefsFile {
+    #[serde(default)]
+    custom_editors: Vec<CustomEditor>,
     #[serde(default)]
     hidden_repositories: Vec<String>,
     #[serde(default)]
@@ -78,6 +86,25 @@ impl Prefs {
 
     pub fn show_all_packages(&mut self) {
         self.data.hidden_packages.clear();
+    }
+
+    pub fn custom_editors(&self) -> Vec<CustomEditor> {
+        self.data.custom_editors.clone()
+    }
+
+    pub fn add_custom_editor(&mut self, editor: CustomEditor) {
+        self.data
+            .custom_editors
+            .retain(|existing| existing.path != editor.path);
+        self.data.custom_editors.push(editor);
+    }
+
+    pub fn remove_custom_editor(&mut self, path: &str) -> bool {
+        let before = self.data.custom_editors.len();
+        self.data
+            .custom_editors
+            .retain(|existing| existing.path != path);
+        self.data.custom_editors.len() != before
     }
 
     pub fn settings(&self) -> &AppSettings {
@@ -163,6 +190,28 @@ mod tests {
         assert!(prefs.hidden_package_set().contains("b"));
         prefs.show_all_packages();
         assert!(prefs.hidden_package_set().is_empty());
+    }
+
+    #[test]
+    fn custom_editors_can_be_added_replaced_and_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut prefs = Prefs::load(dir.path().to_path_buf());
+        prefs.add_custom_editor(CustomEditor {
+            path: "/a/Unity".to_string(),
+            version: "2022.3.22f1".to_string(),
+        });
+        prefs.add_custom_editor(CustomEditor {
+            path: "/a/Unity".to_string(),
+            version: "2022.3.6f1".to_string(),
+        });
+        assert_eq!(prefs.custom_editors().len(), 1);
+        assert_eq!(prefs.custom_editors()[0].version, "2022.3.6f1");
+        prefs.save().unwrap();
+        let mut loaded = Prefs::load(dir.path().to_path_buf());
+        assert_eq!(loaded.custom_editors().len(), 1);
+        assert!(loaded.remove_custom_editor("/a/Unity"));
+        assert!(!loaded.remove_custom_editor("/a/Unity"));
+        assert!(loaded.custom_editors().is_empty());
     }
 
     #[test]
