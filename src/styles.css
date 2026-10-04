@@ -24,13 +24,21 @@
 :root[data-theme="oled"] {
 	color-scheme: dark;
 	--bg-sidebar: #000000;
-	--bg: #000000;
-	--surface: #0c0c0d;
-	--surface-raised: #151516;
-	--surface-hover: #1b1b1d;
-	--border: #232326;
-	--border-strong: #58585e;
-	--shadow: 0 12px 40px rgba(0, 0, 0, 0.85);
+	--bg: #070708;
+	--surface: #141416;
+	--surface-raised: #1c1c1f;
+	--surface-hover: #242428;
+	--border: #2c2c31;
+	--border-strong: #5e5e65;
+	--shadow: 0 12px 40px rgba(0, 0, 0, 0.9);
+}
+
+:root[data-theme="oled"] .sidebar {
+	border-right: 1px solid var(--border);
+}
+
+:root[data-theme="oled"] .card {
+	border-color: var(--border);
 }
 
 :root[data-theme="light"] {
