@@ -99,7 +99,8 @@ input {
 
 input,
 textarea,
-code {
+code,
+.path-chip {
 	-webkit-user-select: text;
 	user-select: text;
 }
