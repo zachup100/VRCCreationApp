@@ -53,7 +53,7 @@ function PackageTable({
 		return (
 			<EmptyState icon="package" title={rows.length === 0 ? "No packages available" : "No matching packages"}>
 				{rows.length === 0
-					? "Turn on a repository in Settings, Packages, or check your internet connection and refresh."
+					? "Turn on a repository on the Packages page, or check your internet connection and refresh."
 					: "Try a different search or repository filter."}
 			</EmptyState>
 		);

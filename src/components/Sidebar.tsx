@@ -7,6 +7,7 @@ type Page = Route["page"];
 
 const top: { page: Page; label: string; icon: IconName }[] = [
 	{ page: "projects", label: "Projects", icon: "projects" },
+	{ page: "packages", label: "Packages", icon: "package" },
 	{ page: "presets", label: "Presets", icon: "presets" },
 	{ page: "backups", label: "Backups", icon: "backups" },
 	{ page: "learn", label: "Learn", icon: "learn" },

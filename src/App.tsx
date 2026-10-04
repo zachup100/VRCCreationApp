@@ -6,6 +6,7 @@ import { LearnPage } from "./pages/LearnPage";
 import { LogsPage } from "./pages/LogsPage";
 import { ManageProjectPage } from "./pages/ManageProjectPage";
 import { NewProjectPage } from "./pages/NewProjectPage";
+import { PackagesPage } from "./pages/PackagesPage";
 import { PresetsPage } from "./pages/PresetsPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -16,6 +17,8 @@ function Page() {
 	switch (route.page) {
 		case "projects":
 			return <ProjectsPage />;
+		case "packages":
+			return <PackagesPage />;
 		case "presets":
 			return <PresetsPage />;
 		case "backups":
