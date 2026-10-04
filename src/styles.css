@@ -452,7 +452,7 @@ button.th:hover {
 
 .table-head.projects,
 .table-body .row.project-row {
-	grid-template-columns: 34px minmax(160px, 2.2fr) minmax(120px, 1fr) 150px 130px auto;
+	grid-template-columns: 34px minmax(140px, 2.2fr) minmax(120px, 1fr) 130px 110px 330px;
 }
 
 .table-body .row {
@@ -463,6 +463,10 @@ button.th:hover {
 
 .table-body .row:last-child {
 	border-bottom: none;
+}
+
+.table .row:last-child {
+	border-radius: 0 0 10px 10px;
 }
 
 .table-body .row:hover {
@@ -498,8 +502,14 @@ button.th:hover {
 	justify-content: flex-end;
 }
 
-.th.col-actions {
-	min-width: 330px;
+
+.col-actions .btn {
+	white-space: nowrap;
+}
+
+.col-type,
+.col-unity {
+	min-width: 0;
 }
 
 .is-missing {
@@ -874,7 +884,7 @@ code {
 
 .table-head.packages,
 .row.packages {
-	grid-template-columns: minmax(200px, 2.2fr) minmax(150px, 1.1fr) minmax(130px, 1fr) 100px 44px;
+	grid-template-columns: minmax(140px, 2.2fr) minmax(130px, 1.1fr) minmax(110px, 1fr) 90px 44px;
 }
 
 .pkg-action {
@@ -939,7 +949,14 @@ code {
 
 .table-head.repos,
 .row.repos {
-	grid-template-columns: minmax(200px, 1.6fr) minmax(120px, 1fr) minmax(180px, 1.4fr) 44px;
+	grid-template-columns: minmax(140px, 1.6fr) minmax(100px, 1fr) minmax(140px, 1.4fr) 88px;
+}
+
+.row-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 4px;
 }
 
 .ellipsis {
@@ -1229,22 +1246,15 @@ code {
 	color: var(--success);
 }
 
-@media (max-width: 1000px) {
+@media (max-width: 1220px) {
 	.table-head.projects,
 	.table-body .row.project-row {
-		grid-template-columns: 34px minmax(140px, 2fr) minmax(100px, 1fr) 130px auto;
+		grid-template-columns: 34px minmax(90px, 2fr) minmax(90px, 1fr) 120px 330px;
 	}
 
-	.col-modified {
-		display: none;
-	}
-
+	.col-modified,
 	.th.col-modified {
 		display: none;
-	}
-
-	.th.col-actions {
-		min-width: 0;
 	}
 }
 
@@ -1630,7 +1640,7 @@ code {
 
 .table-head.backups,
 .row.backups {
-	grid-template-columns: minmax(180px, 2fr) minmax(130px, 1fr) 150px minmax(170px, 1fr) auto;
+	grid-template-columns: minmax(120px, 2fr) minmax(100px, 1fr) 120px minmax(140px, 1fr) 190px;
 }
 
 .row.backups {
@@ -1693,7 +1703,7 @@ code {
 }
 
 .row.preset-row {
-	grid-template-columns: minmax(180px, 2fr) minmax(120px, 1fr) minmax(100px, 1fr) auto;
+	grid-template-columns: minmax(120px, 2fr) minmax(110px, 1fr) minmax(100px, 1fr) 180px;
 	min-height: 68px;
 	border-bottom: 1px solid var(--border);
 }
@@ -1848,7 +1858,7 @@ code {
 
 .table-head.packages.with-menu,
 .row.packages.with-menu {
-	grid-template-columns: minmax(200px, 2.2fr) minmax(150px, 1.1fr) minmax(130px, 1fr) 100px 44px 44px;
+	grid-template-columns: minmax(140px, 2.2fr) minmax(130px, 1.1fr) minmax(110px, 1fr) 90px 44px 44px;
 }
 
 .pkg-menu {
