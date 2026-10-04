@@ -1008,11 +1008,19 @@ tauri-macros 2.7.1 (Rust)
   License: Apache-2.0 OR MIT
   Source: https://github.com/tauri-apps/tauri
 
+tauri-plugin-deep-link 2.6.1 (Rust)
+  License: Apache-2.0 OR MIT
+  Source: https://github.com/tauri-apps/plugins-workspace
+
 tauri-plugin-dialog 2.8.1 (Rust)
   License: Apache-2.0 OR MIT
   Source: https://github.com/tauri-apps/plugins-workspace
 
 tauri-plugin-fs 2.6.0 (Rust)
+  License: Apache-2.0 OR MIT
+  Source: https://github.com/tauri-apps/plugins-workspace
+
+tauri-plugin-single-instance 2.5.2 (Rust)
   License: Apache-2.0 OR MIT
   Source: https://github.com/tauri-apps/plugins-workspace
 
@@ -1109,6 +1117,10 @@ tower-service 0.3.3 (Rust)
   Source: https://github.com/tower-rs/tower
 
 tracing 0.1.44 (Rust)
+  License: MIT
+  Source: https://github.com/tokio-rs/tracing
+
+tracing-attributes 0.1.31 (Rust)
   License: MIT
   Source: https://github.com/tokio-rs/tracing
 
@@ -7114,7 +7126,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Used by: fdeflate 0.3.7, miniz_oxide 0.8.9, miniz_oxide 0.9.1, num-conv 0.2.2, pin-project 1.1.13, pin-project-internal 1.1.13, pin-project-lite 0.2.17, raw-window-handle 0.6.2, sync_wrapper 1.0.2, tauri 2.12.1, tauri-codegen 2.7.1, tauri-macros 2.7.1 and 9 more
+Used by: fdeflate 0.3.7, miniz_oxide 0.8.9, miniz_oxide 0.9.1, num-conv 0.2.2, pin-project 1.1.13, pin-project-internal 1.1.13, pin-project-lite 0.2.17, raw-window-handle 0.6.2, sync_wrapper 1.0.2, tauri 2.12.1, tauri-codegen 2.7.1, tauri-macros 2.7.1 and 11 more
 ------------------------------------------------------------------------------
 
 Apache License
@@ -12804,7 +12816,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ------------------------------------------------------------------------------
-Used by: tauri 2.12.1, tauri-codegen 2.7.1, tauri-macros 2.7.1, tauri-plugin-dialog 2.8.1, tauri-plugin-fs 2.6.0, tauri-runtime 2.12.1, tauri-runtime-wry 2.12.1, tauri-utils 2.10.1, @tauri-apps/api 2.12.1
+Used by: tauri 2.12.1, tauri-codegen 2.7.1, tauri-macros 2.7.1, tauri-plugin-deep-link 2.6.1, tauri-plugin-dialog 2.8.1, tauri-plugin-fs 2.6.0, tauri-runtime 2.12.1, tauri-runtime-wry 2.12.1, tauri-utils 2.10.1, @tauri-apps/api 2.12.1
 ------------------------------------------------------------------------------
 
 MIT License
@@ -12830,7 +12842,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------------
-Used by: tauri-plugin-dialog 2.8.1, tauri-plugin-fs 2.6.0, @tauri-apps/plugin-dialog 2.8.1
+Used by: tauri-plugin-deep-link 2.6.1, tauri-plugin-dialog 2.8.1, tauri-plugin-fs 2.6.0, tauri-plugin-single-instance 2.5.2, @tauri-apps/plugin-dialog 2.8.1
 ------------------------------------------------------------------------------
 
 SPDXVersion: SPDX-2.1
@@ -12853,6 +12865,32 @@ PackageDownloadLocation: git://github.com/tauri-apps/tauri
 PackageDownloadLocation: git+https://github.com/tauri-apps/tauri.git
 PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
 Creator: Person: Daniel Thompson-Yvetot
+
+------------------------------------------------------------------------------
+Used by: tauri-plugin-single-instance 2.5.2
+------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2017 - Present The Tauri Programme in the Commons Conservancy
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ------------------------------------------------------------------------------
 Used by: tendril 0.5.1
@@ -13247,7 +13285,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------------
-Used by: tracing 0.1.44, tracing-core 0.1.36
+Used by: tracing 0.1.44, tracing-attributes 0.1.31, tracing-core 0.1.36
 ------------------------------------------------------------------------------
 
 Copyright (c) 2019 Tokio Contributors
