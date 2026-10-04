@@ -94,6 +94,14 @@ pub fn list_templates() -> Vec<TemplateInfo> {
         .collect()
 }
 
+fn is_reserved_name(name: &str) -> bool {
+    let stem = name.split('.').next().unwrap_or("").to_ascii_lowercase();
+    matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
+        || (stem.len() == 4
+            && (stem.starts_with("com") || stem.starts_with("lpt"))
+            && stem.as_bytes()[3].is_ascii_digit())
+}
+
 pub(crate) fn validate_name(name: &str) -> Result<(), String> {
     let invalid = |c: char| c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|');
     if name.is_empty() {
@@ -104,6 +112,9 @@ pub(crate) fn validate_name(name: &str) -> Result<(), String> {
     }
     if name == "." || name == ".." || name.ends_with('.') || name.ends_with(' ') {
         return Err("The project name cannot end with a dot or a space".to_string());
+    }
+    if is_reserved_name(name) {
+        return Err("Windows does not allow this name for a folder".to_string());
     }
     if name.chars().count() > 100 {
         return Err("The project name is too long".to_string());
@@ -460,6 +471,16 @@ mod tests {
         }
         assert!(validate_name(&"x".repeat(101)).is_err());
         assert!(validate_name(&"x".repeat(100)).is_ok());
+    }
+
+    #[test]
+    fn names_windows_reserves_are_rejected_in_any_case_and_with_extensions() {
+        for name in ["CON", "con", "Prn", "AUX", "nul", "COM1", "com9", "LPT1", "lpt0", "NUL.txt", "con.anything"] {
+            assert!(validate_name(name).is_err(), "{name:?} should be rejected");
+        }
+        for name in ["console", "Com", "lpt10", "comx", "my con", "aux1"] {
+            assert!(validate_name(name).is_ok(), "{name:?} should be accepted");
+        }
     }
 
     #[test]

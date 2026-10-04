@@ -3,32 +3,17 @@ import { useEffect, useState } from "react";
 import { useApp } from "../AppContext";
 import { duplicateProject } from "../api";
 import type { ProjectInfo, TaskProgress } from "../api";
+import { projectNameProblem } from "../names";
 import { errorMessage } from "../format";
 import { Button } from "./Button";
 import { Checkbox, Modal, TextField } from "./Controls";
 import { Icon } from "./Icons";
-
-const invalidName = /[\\/:*?"<>|\u0000-\u001f]/;
 
 type State =
 	| { step: "form"; error: string | null }
 	| { step: "running" }
 	| { step: "done"; project: ProjectInfo }
 	| { step: "failed"; message: string };
-
-function nameProblem(value: string): string | null {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return "Enter a project name";
-	}
-	if (invalidName.test(trimmed)) {
-		return "The name contains characters that are not allowed";
-	}
-	if (/[. ]$/.test(trimmed)) {
-		return "The name cannot end with a dot or a space";
-	}
-	return null;
-}
 
 function parentOf(path: string): string {
 	const trimmed = path.replace(/[\\/]+$/, "");
@@ -43,7 +28,7 @@ export function DuplicateProjectModal({ project, onClose }: { project: ProjectIn
 	const [state, setState] = useState<State>({ step: "form", error: null });
 	const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 	const running = state.step === "running";
-	const problem = nameProblem(name);
+	const problem = projectNameProblem(name);
 
 	useEffect(() => {
 		setPackageOperation(running);

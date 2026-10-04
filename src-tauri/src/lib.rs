@@ -61,6 +61,7 @@ pub fn run() {
             commands::settings::get_settings,
             commands::settings::update_settings,
             commands::packages::project_packages,
+            commands::about::get_licenses,
             applog::get_logs,
             applog::clear_logs,
             commands::presets::list_presets,

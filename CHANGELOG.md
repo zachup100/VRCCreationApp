@@ -1,0 +1,28 @@
+# Changelog
+
+## 0.1.0 (unreleased)
+
+First release. Windows 10 and 11 only.
+
+### Projects
+- Project list with search, sorting, list and grid views, favorites and a green Migrate button for legacy projects.
+- Create projects from bundled World and Avatar templates for Unity 2022.3.22f1 and 2019.4.31f1, with an optional preset of packages.
+- Add existing projects by folder picker or by dragging folders onto the window, import the project list from the VRChat Creator Companion, duplicate projects, and open them with any installed Unity version and custom launch arguments.
+- Back up projects to zip files, browse the app's own backups, and restore or delete them.
+- Migrate legacy SDK3 projects to the VPM package system and Unity 2019 projects to Unity 2022, with an optional backup first.
+
+### Packages
+- See installed and available packages per project, with update tags, search, repository filters and an option to show only packages that support the project type.
+- Install, upgrade, downgrade and remove packages through a review dialog. Removing a package also lists the packages that depend on it and asks for acknowledgement.
+- Resolve missing packages, reinstall a package, and clean up redundant entries in a project's package list.
+- Add community repositories (including ones that need authentication headers), show or hide repositories, hide individual packages, and import repositories and package folders from the Creator Companion.
+- Presets: saved package lists for World or Avatar projects that can be picked when creating a project.
+
+### App
+- Dark, OLED, light and system themes.
+- Logs page with backend activity, download progress for package installs, keyboard and screen reader support for dialogs, menus and option groups.
+- Open source license notices are included in the app under Settings, About.
+
+### Notes
+- The installers download the Microsoft WebView2 Runtime if it is missing. The portable executable shows a message with a download link instead.
+- This app is not made or endorsed by VRChat.

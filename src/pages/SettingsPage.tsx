@@ -7,6 +7,7 @@ import { useActions } from "../actions";
 import { Button, IconButton } from "../components/Button";
 import { EmptyState, Select, Tabs } from "../components/Controls";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
+import { LicensesModal } from "../components/LicensesModal";
 import type { Tab } from "../components/Controls";
 import { Icon } from "../components/Icons";
 import type { IconName } from "../components/Icons";
@@ -142,6 +143,33 @@ function ProjectSettings() {
 	);
 }
 
+function AboutSection() {
+	const [version, setVersion] = useState("");
+	const [showLicenses, setShowLicenses] = useState(false);
+	useEffect(() => {
+		getVersion()
+			.then(setVersion)
+			.catch(() => setVersion(""));
+	}, []);
+	return (
+		<section className="settings-section">
+			<h2>About</h2>
+			<div className="card setting-list">
+				<SettingRow
+					icon="info"
+					title={version ? `VRCreationApp ${version}` : "VRCreationApp"}
+					description="An open-source manager for VRChat projects and VPM packages, built on vrc-get. It is not made or endorsed by VRChat."
+				>
+					<Button icon="book" onClick={() => setShowLicenses(true)}>
+						Open Source Licenses
+					</Button>
+				</SettingRow>
+			</div>
+			{showLicenses && <LicensesModal onClose={() => setShowLicenses(false)} />}
+		</section>
+	);
+}
+
 function GeneralTab() {
 	const { editors, editorsLoading, editorsError, refreshEditors, projects } = useApp();
 	const actions = useActions();
@@ -219,6 +247,7 @@ function GeneralTab() {
 					</SettingRow>
 				</div>
 			</section>
+			<AboutSection />
 		</>
 	);
 }

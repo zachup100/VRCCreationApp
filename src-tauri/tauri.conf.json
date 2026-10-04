@@ -25,11 +25,18 @@
 	},
 	"bundle": {
 		"active": true,
-		"targets": "all",
+		"targets": [
+			"nsis",
+			"msi"
+		],
 		"windows": {
 			"webviewInstallMode": {
 				"type": "downloadBootstrapper",
 				"silent": false
+			},
+			"nsis": {
+				"installMode": "currentUser",
+				"displayLanguageSelector": false
 			}
 		},
 		"icon": [
@@ -38,6 +45,9 @@
 			"icons/128x128@2x.png",
 			"icons/icon.icns",
 			"icons/icon.ico"
-		]
+		],
+		"category": "DeveloperTool",
+		"shortDescription": "Manage VRChat projects and VPM packages",
+		"longDescription": "An open-source manager for VRChat Unity projects and VPM packages, built on vrc-get. It creates, backs up, migrates and duplicates projects and installs, upgrades and removes packages. It is not made or endorsed by VRChat."
 	}
 }

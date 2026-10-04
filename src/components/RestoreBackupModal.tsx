@@ -3,32 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppContext";
 import { restoreBackup } from "../api";
 import type { BackupInfo, TaskProgress } from "../api";
+import { projectNameProblem } from "../names";
 import { errorMessage } from "../format";
 import { Button } from "./Button";
 import { Modal, TextField } from "./Controls";
 import { Icon } from "./Icons";
-
-const invalidName = /[\\/:*?"<>|\u0000-\u001f]/;
 
 type State =
 	| { step: "running" }
 	| { step: "naming"; conflict: string; error: string | null }
 	| { step: "done"; name: string; path: string }
 	| { step: "failed"; message: string };
-
-function nameProblem(value: string): string | null {
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return "Enter a project name";
-	}
-	if (invalidName.test(trimmed)) {
-		return "The name contains characters that are not allowed";
-	}
-	if (/[. ]$/.test(trimmed)) {
-		return "The name cannot end with a dot or a space";
-	}
-	return null;
-}
 
 export function RestoreBackupModal({ backup, location, onClose }: { backup: BackupInfo; location: string; onClose: () => void }) {
 	const { refreshProjects, setPackageOperation, navigate } = useApp();
@@ -94,7 +79,7 @@ export function RestoreBackupModal({ backup, location, onClose }: { backup: Back
 		void run();
 	});
 
-	const problem = nameProblem(name);
+	const problem = projectNameProblem(name);
 
 	return (
 		<Modal

@@ -369,3 +369,7 @@ export function setPackagesHidden(names: string[], hidden: boolean): Promise<voi
 export function showAllPackages(): Promise<void> {
 	return invoke<void>("show_all_packages");
 }
+
+export function getLicenses(): Promise<string> {
+	return invoke<string>("get_licenses");
+}

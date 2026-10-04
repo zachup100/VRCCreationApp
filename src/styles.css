@@ -2202,3 +2202,22 @@ code {
 .row.hidden-pkgs.is-hidden .latest {
 	opacity: 0.55;
 }
+
+.modal.wide {
+	width: min(900px, 100%);
+}
+
+.license-text {
+	max-height: 55vh;
+	margin: 0;
+	padding: 12px 14px;
+	overflow: auto;
+	background: var(--bg);
+	border-radius: 8px;
+	font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text);
+	white-space: pre-wrap;
+	word-break: break-word;
+}

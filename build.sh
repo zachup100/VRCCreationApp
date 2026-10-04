@@ -2,7 +2,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUT="$ROOT/release"
+OUT="$ROOT/release/windows"
 cd "$ROOT"
 
 HOST="$(uname -s)"
@@ -12,10 +12,6 @@ case "$HOST" in
     MINGW* | MSYS* | CYGWIN*) HOST_OS="windows" ;;
     *) HOST_OS="unknown" ;;
 esac
-
-DONE=()
-SKIPPED=()
-FAILED=()
 
 need() {
     if ! command -v "$1" >/dev/null 2>&1; then
@@ -33,15 +29,15 @@ prepare() {
     fi
 }
 
+VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version" 2>/dev/null || echo "0.0.0")"
+
 collect() {
-    local label="$1"
-    shift
-    mkdir -p "$OUT/$label"
+    mkdir -p "$OUT"
     local found=0
     for pattern in "$@"; do
         for file in $pattern; do
             if [ -f "$file" ]; then
-                cp "$file" "$OUT/$label/"
+                cp "$file" "$OUT/"
                 found=1
             fi
         done
@@ -49,37 +45,17 @@ collect() {
     [ "$found" -eq 1 ]
 }
 
-build_linux() {
-    if [ "$HOST_OS" != "linux" ]; then
-        SKIPPED+=("Linux: must be built on a Linux machine")
-        return
-    fi
-    if npm run tauri build -- --bundles appimage,deb; then
-        local base="src-tauri/target/release/bundle"
-        if collect linux "$base/appimage/*.AppImage" "$base/deb/*.deb"; then
-            DONE+=("Linux: $OUT/linux")
-        else
-            FAILED+=("Linux: build finished but no artifacts were found")
-        fi
-    else
-        FAILED+=("Linux: build failed")
+portable() {
+    local source="$1"
+    if [ -f "$source" ]; then
+        mkdir -p "$OUT"
+        cp "$source" "$OUT/VRCreationApp-$VERSION-portable.exe"
     fi
 }
 
-build_mac() {
-    if [ "$HOST_OS" != "mac" ]; then
-        SKIPPED+=("Mac: must be built on a Mac (Apple toolchain and signing are required)")
-        return
-    fi
-    if npm run tauri build -- --bundles dmg; then
-        local base="src-tauri/target/release/bundle"
-        if collect mac "$base/dmg/*.dmg"; then
-            DONE+=("Mac: $OUT/mac")
-        else
-            FAILED+=("Mac: build finished but no artifacts were found")
-        fi
-    else
-        FAILED+=("Mac: build failed")
+checksums() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        (cd "$OUT" && sha256sum * > SHA256SUMS.txt)
     fi
 }
 
@@ -88,13 +64,10 @@ build_windows() {
         windows)
             if npm run tauri build -- --bundles nsis,msi; then
                 local base="src-tauri/target/release"
-                if collect windows "$base/bundle/nsis/*.exe" "$base/bundle/msi/*.msi" "$base/vr-creation-app.exe"; then
-                    DONE+=("Windows: $OUT/windows")
-                else
-                    FAILED+=("Windows: build finished but no artifacts were found")
-                fi
+                portable "$base/vr-creation-app.exe"
+                collect "$base/bundle/nsis/*.exe" "$base/bundle/msi/*.msi"
             else
-                FAILED+=("Windows: build failed")
+                return 1
             fi
             ;;
         linux | mac)
@@ -103,59 +76,34 @@ build_windows() {
             need makensis "install NSIS from your package manager" || missing=1
             need clang "install LLVM and clang from your package manager" || missing=1
             if [ "$missing" -eq 1 ]; then
-                SKIPPED+=("Windows: cross-compiling from $HOST_OS needs the missing tools listed above")
-                return
+                echo "Cross-compiling from $HOST_OS needs the tools above. The MSI installer can only be built on Windows."
+                return 1
             fi
             rustup target add x86_64-pc-windows-msvc >/dev/null 2>&1
             if npm run tauri build -- --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis; then
                 local base="src-tauri/target/x86_64-pc-windows-msvc/release"
-                if collect windows "$base/bundle/nsis/*.exe" "$base/vr-creation-app.exe"; then
-                    DONE+=("Windows: $OUT/windows (cross-compiled, NSIS installer and portable exe)")
-                else
-                    FAILED+=("Windows: build finished but no artifacts were found")
-                fi
+                portable "$base/vr-creation-app.exe"
+                collect "$base/bundle/nsis/*.exe"
             else
-                FAILED+=("Windows: cross-compile failed")
+                return 1
             fi
             ;;
         *)
-            SKIPPED+=("Windows: unsupported host system")
+            echo "Unsupported host system for building."
+            return 1
             ;;
     esac
 }
 
-echo "Select the platform to compile for:"
-echo "  1) Windows"
-echo "  2) Mac"
-echo "  3) Linux"
-echo "  4) All of the above"
-read -r -p "Choice [1-4]: " CHOICE
-
-case "$CHOICE" in
-    1 | 2 | 3 | 4) ;;
-    *)
-        echo "Invalid choice: $CHOICE"
-        exit 1
-        ;;
-esac
-
 prepare || exit 1
 
-case "$CHOICE" in
-    1) build_windows ;;
-    2) build_mac ;;
-    3) build_linux ;;
-    4)
-        build_linux
-        build_mac
-        build_windows
-        ;;
-esac
-
-echo
-echo "Build summary"
-for line in "${DONE[@]+"${DONE[@]}"}"; do echo "  done:    $line"; done
-for line in "${SKIPPED[@]+"${SKIPPED[@]}"}"; do echo "  skipped: $line"; done
-for line in "${FAILED[@]+"${FAILED[@]}"}"; do echo "  failed:  $line"; done
-
-[ "${#FAILED[@]}" -eq 0 ] && [ "${#DONE[@]}" -gt 0 ]
+if build_windows; then
+    checksums
+    echo
+    echo "Windows build finished: $OUT"
+    ls -1 "$OUT"
+else
+    echo
+    echo "Windows build failed."
+    exit 1
+fi

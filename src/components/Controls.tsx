@@ -279,11 +279,13 @@ export function Modal({
 	onClose,
 	children,
 	actions,
+	wide,
 }: {
 	title: string;
 	onClose: () => void;
 	children: ReactNode;
 	actions: ReactNode;
+	wide?: boolean;
 }) {
 	const titleId = useId();
 	const dialogRef = useRef<HTMLDivElement>(null);
@@ -312,7 +314,7 @@ export function Modal({
 	return createPortal(
 		<div className="modal-backdrop" onMouseDown={onClose}>
 			<div
-				className="modal"
+				className={`modal${wide ? " wide" : ""}`}
 				role="dialog"
 				aria-modal="true"
 				aria-labelledby={titleId}

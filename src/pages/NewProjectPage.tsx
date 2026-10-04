@@ -10,9 +10,8 @@ import { PresetPackages } from "../components/PresetPackages";
 import { Icon } from "../components/Icons";
 import { radioGroupKeys } from "../a11y";
 import { errorMessage } from "../format";
+import { projectNameProblem } from "../names";
 import { loadLastLocation, saveLastLocation } from "../theme";
-
-const invalidName = /[\\/:*?"<>|\u0000-\u001f]/;
 
 function joinPath(location: string, name: string): string {
 	const separator = location.includes("\\") && !location.includes("/") ? "\\" : "/";
@@ -56,13 +55,7 @@ export function NewProjectPage() {
 	const unityMissing = selected !== undefined && !editorsLoading && !editors.some((editor) => editor.version === selected.unityVersion);
 
 	const trimmed = name.trim();
-	const nameError = !trimmed
-		? "Enter a project name"
-		: invalidName.test(trimmed)
-			? "The name contains characters that are not allowed"
-			: /[. ]$/.test(trimmed)
-				? "The name cannot end with a dot or a space"
-				: null;
+	const nameError = projectNameProblem(name);
 	const canCreate = !nameError && location.trim() !== "" && template !== "" && !creating;
 
 	const pickFolder = async () => {
