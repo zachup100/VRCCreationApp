@@ -54,6 +54,7 @@ pub struct InstallChange {
 #[serde(rename_all = "camelCase")]
 pub struct RemoveChange {
     name: String,
+    display_name: String,
     reason: &'static str,
     depends_on: Vec<String>,
 }
@@ -105,6 +106,11 @@ fn summarize(project: &UnityProject, changes: &PendingProjectChanges<'_>) -> Cha
             }
             PackageChange::Remove(remove) => removes.push(RemoveChange {
                 name: name.to_string(),
+                display_name: project
+                    .get_installed_package(name)
+                    .and_then(|manifest| manifest.display_name())
+                    .unwrap_or(name)
+                    .to_string(),
                 reason: match remove.reason() {
                     RemoveReason::Requested => "requested",
                     RemoveReason::Legacy => "legacy",

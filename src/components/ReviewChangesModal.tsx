@@ -19,6 +19,18 @@ const removeLabels: Record<ChangeSummary["removes"][number]["reason"], string> =
 	unused: "No longer needed",
 };
 
+function PackageLabel({ name, displayName, strong }: { name: string; displayName: string; strong?: boolean }) {
+	const title = strong ? <strong>{displayName}</strong> : <span className="dep-name">{displayName}</span>;
+	if (displayName === name) {
+		return title;
+	}
+	return (
+		<>
+			{title} <span className="pkg-id">[{name}]</span>
+		</>
+	);
+}
+
 export function ReviewChangesModal({
 	summary,
 	busy,
@@ -33,6 +45,7 @@ export function ReviewChangesModal({
 	const [showLegacy, setShowLegacy] = useState(false);
 	const [acknowledged, setAcknowledged] = useState(false);
 	const hasDependents = summary.removes.some((item) => item.reason === "dependent");
+	const displayNames = new Map(summary.removes.map((item) => [item.name, item.displayName]));
 	const blocked = summary.conflicts.length > 0;
 	const legacyCount = summary.legacyFiles.length + summary.legacyFolders.length;
 	const empty = summary.installs.length === 0 && summary.removes.length === 0;
@@ -121,9 +134,19 @@ export function ReviewChangesModal({
 								<li key={item.name} className="change-row">
 									<span className="tag kind-remove">{removeLabels[item.reason]}</span>
 									<div className="change-name">
-										<strong>{item.name}</strong>
+										<span>
+											<PackageLabel name={item.name} displayName={item.displayName} strong />
+										</span>
 										{item.reason === "dependent" && item.dependsOn.length > 0 && (
-											<span className="muted change-note">Depends on {item.dependsOn.join(", ")}</span>
+											<span className="muted change-note">
+												Depends on{" "}
+												{item.dependsOn.map((dependency, index) => (
+													<span key={dependency}>
+														{index > 0 && ", "}
+														<PackageLabel name={dependency} displayName={displayNames.get(dependency) ?? dependency} />
+													</span>
+												))}
+											</span>
 										)}
 									</div>
 								</li>

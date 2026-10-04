@@ -156,7 +156,7 @@ export interface ChangeSummary {
 		previousVersion: string | null;
 		kind: "new" | "upgrade" | "downgrade" | "reinstall";
 	}[];
-	removes: { name: string; reason: "requested" | "dependent" | "legacy" | "unused"; dependsOn: string[] }[];
+	removes: { name: string; displayName: string; reason: "requested" | "dependent" | "legacy" | "unused"; dependsOn: string[] }[];
 	conflicts: {
 		package: string;
 		conflictingPackages: string[];

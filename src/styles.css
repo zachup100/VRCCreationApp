@@ -2156,3 +2156,13 @@ code {
 .change-note {
 	font-size: 13px;
 }
+
+.pkg-id {
+	font-style: italic;
+	font-weight: 400;
+	color: var(--muted);
+}
+
+.dep-name {
+	color: var(--text);
+}
