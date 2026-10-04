@@ -5,6 +5,7 @@ import { createProject, listPresets, listTemplates } from "../api";
 import type { Preset, TemplateInfo } from "../api";
 import { Button } from "../components/Button";
 import { TextField } from "../components/Controls";
+import { PresetPackages } from "../components/PresetPackages";
 import { Icon } from "../components/Icons";
 import { errorMessage } from "../format";
 import { loadLastLocation, saveLastLocation } from "../theme";
@@ -134,24 +135,34 @@ export function NewProjectPage() {
 				</p>
 			) : (
 				<div className="preset-picker" role="radiogroup" aria-label="Preset">
-					{[{ id: "", name: "No preset", packages: [] as Preset["packages"] }, ...kindPresets].map((item) => (
+					<div className={`preset-option${activePreset === undefined ? " selected" : ""}`}>
 						<button
-							key={item.id || "none"}
 							type="button"
 							role="radio"
-							aria-checked={(activePreset?.id ?? "") === item.id}
+							aria-checked={activePreset === undefined}
 							disabled={creating}
-							className={`radio-option${(activePreset?.id ?? "") === item.id ? " selected" : ""}`}
-							onClick={() => setPresetId(item.id)}
+							className="preset-option-main"
+							onClick={() => setPresetId("")}
 						>
 							<span className="radio-dot" />
-							<strong>{item.name}</strong>
-							{item.id !== "" && (
-								<span className="muted">
-									{item.packages.length} {item.packages.length === 1 ? "package" : "packages"}
-								</span>
-							)}
+							<strong>No preset</strong>
 						</button>
+					</div>
+					{kindPresets.map((item) => (
+						<div key={item.id} className={`preset-option${activePreset?.id === item.id ? " selected" : ""}`}>
+							<button
+								type="button"
+								role="radio"
+								aria-checked={activePreset?.id === item.id}
+								disabled={creating}
+								className="preset-option-main"
+								onClick={() => setPresetId(item.id)}
+							>
+								<span className="radio-dot" />
+								<strong>{item.name}</strong>
+							</button>
+							<PresetPackages preset={item} />
+						</div>
 					))}
 				</div>
 			)}

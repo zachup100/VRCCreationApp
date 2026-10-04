@@ -5,6 +5,7 @@ import type { Preset } from "../api";
 import { Button } from "../components/Button";
 import { EmptyState } from "../components/Controls";
 import { PresetEditor } from "../components/PresetEditor";
+import { PresetPackages } from "../components/PresetPackages";
 import { TypeBadge } from "../components/ProjectParts";
 import { errorMessage } from "../format";
 
@@ -87,23 +88,7 @@ export function PresetsPage() {
 								<div>
 									<TypeBadge category={preset.kind} />
 								</div>
-								<div className="hover-anchor">
-									<button type="button" className="count-link" aria-label={`Show the ${preset.packages.length} packages in ${preset.name}`}>
-										{preset.packages.length} {preset.packages.length === 1 ? "package" : "packages"}
-									</button>
-									<div className="popover" role="tooltip">
-										<ul>
-											{[...preset.packages]
-												.sort((a, b) => (a.displayName ?? a.name).toLowerCase().localeCompare((b.displayName ?? b.name).toLowerCase()))
-												.map((item) => (
-													<li key={item.name}>
-														<span title={item.name}>{item.displayName ?? item.name}</span>
-														<span className="muted">{item.version ?? "Latest"}</span>
-													</li>
-												))}
-										</ul>
-									</div>
-								</div>
+								<PresetPackages preset={preset} />
 								<div className="col-actions">
 									<Button onClick={() => setEditing({ preset })}>Edit</Button>
 									<Button variant="danger" onClick={() => void remove(preset)}>
