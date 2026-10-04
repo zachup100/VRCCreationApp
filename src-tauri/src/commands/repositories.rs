@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, State};
-use vrc_get_vpm::environment::{add_remote_repo, AddRepositoryErr, AddUserPackageResult, Settings};
+use vrc_get_vpm::environment::{
+    add_remote_repo, cleanup_repos_folder, AddRepositoryErr, AddUserPackageResult, Settings,
+};
 use vrc_get_vpm::io::DefaultEnvironmentIo;
 use vrc_get_vpm::repository::RemoteRepository;
 use vrc_get_vpm::VersionSelector;
@@ -112,6 +114,12 @@ fn parse_http_url(url: &str) -> Option<reqwest::Url> {
     }
 }
 
+fn repo_key(repo: &vrc_get_vpm::UserRepoSetting) -> Option<String> {
+    repo.id()
+        .or(repo.url().map(|url| url.as_str()))
+        .map(str::to_string)
+}
+
 fn lock_prefs<'a>(
     state: &'a State<'_, Mutex<Prefs>>,
 ) -> Result<std::sync::MutexGuard<'a, Prefs>, String> {
@@ -180,6 +188,7 @@ pub async fn repositories_info(
 pub async fn repository_preview(
     url: String,
     headers: Vec<HeaderInput>,
+    ignore_index: Option<usize>,
     vpm: State<'_, VpmContext>,
 ) -> Result<RepositoryPreview, String> {
     let Some(parsed) = parse_http_url(&url) else {
@@ -199,7 +208,10 @@ pub async fn repository_preview(
             (OFFICIAL_ID.to_string(), "Official".to_string()),
             (CURATED_ID.to_string(), "Curated".to_string()),
         ];
-        for repo in settings.get_user_repos() {
+        for (index, repo) in settings.get_user_repos().iter().enumerate() {
+            if Some(index) == ignore_index {
+                continue;
+            }
             let label = repo
                 .name()
                 .or(repo.id())
@@ -336,6 +348,94 @@ pub async fn repository_add(
         .map_err(|error| format!("Could not save repository settings: {error}"))?;
     vpm.invalidate().await;
     log(&app, "success", format!("Added repository {parsed_label}"));
+    Ok(())
+}
+
+#[derive(Serialize)]
+pub struct HeaderOutput {
+    name: String,
+    value: String,
+}
+
+#[tauri::command]
+pub async fn repository_headers(
+    index: usize,
+    expected_id: String,
+    vpm: State<'_, VpmContext>,
+) -> Result<Vec<HeaderOutput>, String> {
+    let _guard = vpm.lock.lock().await;
+    let settings = Settings::load(&vpm.io)
+        .await
+        .map_err(|error| format!("Could not read repository settings: {error}"))?;
+    let repo = settings
+        .get_user_repos()
+        .get(index)
+        .filter(|repo| repo_key(repo).as_deref() == Some(expected_id.as_str()))
+        .ok_or_else(|| "The repository list changed. Refresh and try again.".to_string())?;
+    Ok(repo
+        .headers()
+        .iter()
+        .map(|(name, value)| HeaderOutput {
+            name: name.to_string(),
+            value: value.to_string(),
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn repository_update(
+    app: AppHandle,
+    index: usize,
+    expected_id: String,
+    url: String,
+    headers: Vec<HeaderInput>,
+    vpm: State<'_, VpmContext>,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<(), String> {
+    let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
+    let parsed_label = parsed.to_string();
+    let header_values = header_map(&headers)?;
+    let _busy = vpm.try_busy()?;
+    let new_id = {
+        let _guard = vpm.lock.lock().await;
+        let mut settings = Settings::load(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not read repository settings: {error}"))?;
+        let count = settings.get_user_repos().len();
+        let matches = settings
+            .get_user_repos()
+            .get(index)
+            .map(|repo| repo_key(repo).as_deref() == Some(expected_id.as_str()))
+            .unwrap_or(false);
+        if !matches {
+            return Err("The repository list changed. Refresh and try again.".to_string());
+        }
+        settings.remove_repo_at_index(index);
+        add_remote_repo(&mut settings, parsed, None, header_values, &vpm.io, &vpm.http)
+            .await
+            .map_err(|error| format!("Could not update the repository: {error}"))?;
+        let mut order: Vec<usize> = (0..count - 1).collect();
+        order.insert(index, count - 1);
+        settings.reorder_user_repos_by_indices(&order);
+        let new_id = settings.get_user_repos().get(index).and_then(repo_key);
+        settings
+            .save(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not save repository settings: {error}"))?;
+        let _ = cleanup_repos_folder(&settings, &vpm.io).await;
+        new_id
+    };
+    vpm.invalidate().await;
+    log(&app, "success", format!("Updated repository {parsed_label}"));
+    if let Some(new_id) = new_id {
+        if new_id != expected_id {
+            let mut prefs = lock_prefs(&prefs)?;
+            let was_hidden = prefs.is_hidden(&expected_id);
+            prefs.set_hidden(&expected_id, false);
+            prefs.set_hidden(&new_id, was_hidden);
+            prefs.save().map_err(|error| error.to_string())?;
+        }
+    }
     Ok(())
 }
 

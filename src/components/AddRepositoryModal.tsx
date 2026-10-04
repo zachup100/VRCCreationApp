@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { repositoryAdd, repositoryPreview } from "../api";
-import type { HeaderInput, RepositoryPreview } from "../api";
+import { useEffect, useState } from "react";
+import { repositoryAdd, repositoryHeaders, repositoryPreview, repositoryUpdate } from "../api";
+import type { CommunityRepository, HeaderInput, RepositoryPreview } from "../api";
 import { errorMessage } from "../format";
 import { Button } from "./Button";
 import { Modal, Switch, TextField } from "./Controls";
@@ -21,12 +21,42 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
 	);
 }
 
-export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; onAdded: (name: string) => void }) {
-	const [url, setUrl] = useState("");
+export function AddRepositoryModal({
+	onClose,
+	onAdded,
+	editing,
+}: {
+	onClose: () => void;
+	onAdded: (name: string) => void;
+	editing?: CommunityRepository;
+}) {
+	const [url, setUrl] = useState(editing?.url ?? "");
 	const [state, setState] = useState<CheckState>({ phase: "idle" });
 	const [useHeaders, setUseHeaders] = useState(false);
 	const [headers, setHeaders] = useState<HeaderInput[]>([{ name: "", value: "" }]);
 	const [adding, setAdding] = useState(false);
+
+	useEffect(() => {
+		if (!editing) {
+			return;
+		}
+		let cancelled = false;
+		repositoryHeaders(editing.index, editing.id)
+			.then((saved) => {
+				if (!cancelled && saved.length > 0) {
+					setHeaders(saved);
+					setUseHeaders(true);
+				}
+			})
+			.catch((error) => {
+				if (!cancelled) {
+					setAddError(errorMessage(error));
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [editing]);
 	const [addError, setAddError] = useState<string | null>(null);
 
 	const activeHeaders = useHeaders ? headers.filter((header) => header.name.trim() !== "") : [];
@@ -44,7 +74,7 @@ export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; 
 		setState({ phase: "checking" });
 		setAddError(null);
 		try {
-			setState({ phase: "result", preview: await repositoryPreview(url, activeHeaders) });
+			setState({ phase: "result", preview: await repositoryPreview(url, activeHeaders, editing?.index) });
 		} catch (error) {
 			setState({ phase: "failed", message: errorMessage(error) });
 		}
@@ -60,7 +90,11 @@ export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; 
 		setAdding(true);
 		setAddError(null);
 		try {
-			await repositoryAdd(success.url, activeHeaders);
+			if (editing) {
+				await repositoryUpdate(editing.index, editing.id, success.url, activeHeaders);
+			} else {
+				await repositoryAdd(success.url, activeHeaders);
+			}
 			onAdded(success.name);
 			onClose();
 		} catch (error) {
@@ -84,14 +118,14 @@ export function AddRepositoryModal({ onClose, onAdded }: { onClose: () => void; 
 
 	return (
 		<Modal
-			title="Add Repository"
+			title={editing ? "Edit Repository" : "Add Repository"}
 			onClose={onClose}
 			actions={
 				<>
 					<Button onClick={onClose}>Cancel</Button>
 					{success ? (
 						<Button variant="primary" disabled={adding} onClick={() => void add()}>
-							I Understand, Add Repository
+							{editing ? "I Understand, Save Changes" : "I Understand, Add Repository"}
 						</Button>
 					) : (
 						<Button variant="primary" disabled={!url.trim() || state.phase === "checking"} onClick={() => void check()}>

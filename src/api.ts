@@ -100,8 +100,16 @@ export interface HeaderInput {
 	value: string;
 }
 
-export function repositoryPreview(url: string, headers: HeaderInput[]): Promise<RepositoryPreview> {
-	return invoke<RepositoryPreview>("repository_preview", { url, headers });
+export function repositoryPreview(url: string, headers: HeaderInput[], ignoreIndex?: number): Promise<RepositoryPreview> {
+	return invoke<RepositoryPreview>("repository_preview", { url, headers, ignoreIndex: ignoreIndex ?? null });
+}
+
+export function repositoryHeaders(index: number, expectedId: string): Promise<HeaderInput[]> {
+	return invoke<HeaderInput[]>("repository_headers", { index, expectedId });
+}
+
+export function repositoryUpdate(index: number, expectedId: string, url: string, headers: HeaderInput[]): Promise<void> {
+	return invoke<void>("repository_update", { index, expectedId, url, headers });
 }
 
 export function repositoryAdd(url: string, headers: HeaderInput[]): Promise<void> {

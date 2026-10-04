@@ -38,6 +38,7 @@ function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
 	const [info, setInfo] = useState<RepositoriesInfo | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [adding, setAdding] = useState(false);
+	const [editing, setEditing] = useState<CommunityRepository | null>(null);
 	const [pendingRemove, setPendingRemove] = useState<CommunityRepository | null>(null);
 
 	const load = useCallback(async () => {
@@ -116,7 +117,10 @@ function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
 						<span className="ellipsis muted" title={repo.url ?? ""}>
 							{repo.url ?? ""}
 						</span>
-						<IconButton icon="minusCircle" label={`Remove ${repo.name}`} className="remove" onClick={() => setPendingRemove(repo)} />
+						<span className="row-actions">
+							<IconButton icon="edit" label={`Edit ${repo.name}`} onClick={() => setEditing(repo)} />
+							<IconButton icon="minusCircle" label={`Remove ${repo.name}`} className="remove" onClick={() => setPendingRemove(repo)} />
+						</span>
 					</div>
 				))}
 			</div>
@@ -130,6 +134,16 @@ function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
 					onClose={() => setAdding(false)}
 					onAdded={(name) => {
 						notify("success", `Added repository ${name}`);
+						void load();
+					}}
+				/>
+			)}
+			{editing && (
+				<AddRepositoryModal
+					editing={editing}
+					onClose={() => setEditing(null)}
+					onAdded={(name) => {
+						notify("success", `Updated repository ${name}`);
 						void load();
 					}}
 				/>

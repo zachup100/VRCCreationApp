@@ -80,6 +80,8 @@ pub fn run() {
             commands::repositories::repository_preview,
             commands::repositories::repository_add,
             commands::repositories::repository_remove,
+            commands::repositories::repository_headers,
+            commands::repositories::repository_update,
             commands::repositories::repository_set_hidden,
             commands::repositories::import_packages_from_vcc,
         ])

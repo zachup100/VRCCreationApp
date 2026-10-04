@@ -78,6 +78,12 @@ const paths = {
 			<path d="M12 8v8M8 12h8" />
 		</>
 	),
+	edit: (
+		<>
+			<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z" />
+			<path d="m14.5 7.5 3 3" />
+		</>
+	),
 	minusCircle: (
 		<>
 			<circle cx="12" cy="12" r="9" />
