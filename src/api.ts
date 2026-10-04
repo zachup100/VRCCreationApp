@@ -191,8 +191,13 @@ export function listTemplates(): Promise<TemplateInfo[]> {
 	return invoke<TemplateInfo[]>("list_templates");
 }
 
-export function createProject(template: string, name: string, location: string): Promise<ProjectInfo> {
-	return invoke<ProjectInfo>("create_project", { template, name, location });
+export interface CreatedProject {
+	project: ProjectInfo;
+	warnings: string[];
+}
+
+export function createProject(template: string, name: string, location: string, presetId?: string): Promise<CreatedProject> {
+	return invoke<CreatedProject>("create_project", { template, name, location, presetId: presetId ?? null });
 }
 
 export interface AppSettings {
@@ -264,4 +269,52 @@ export function deleteBackup(fileName: string): Promise<void> {
 
 export function restoreBackup(fileName: string, location: string, name?: string): Promise<RestoreOutcome> {
 	return invoke<RestoreOutcome>("restore_backup", { fileName, location, name: name ?? null });
+}
+
+export type PresetKind = "world" | "avatar";
+
+export interface PresetPackage {
+	name: string;
+	version: string | null;
+}
+
+export interface Preset {
+	id: string;
+	name: string;
+	kind: PresetKind;
+	packages: PresetPackage[];
+	createdAt: number;
+	updatedAt: number;
+}
+
+export interface PresetInput {
+	id: string | null;
+	name: string;
+	kind: PresetKind;
+	packages: PresetPackage[];
+}
+
+export interface AvailablePackage {
+	name: string;
+	displayName: string;
+	versions: string[];
+	latestVersion: string | null;
+	source: PackageSource;
+	repository: string | null;
+}
+
+export function listPresets(): Promise<Preset[]> {
+	return invoke<Preset[]>("list_presets");
+}
+
+export function savePreset(input: PresetInput): Promise<Preset> {
+	return invoke<Preset>("save_preset", { input });
+}
+
+export function deletePreset(id: string): Promise<void> {
+	return invoke<void>("delete_preset", { id });
+}
+
+export function availablePackages(refresh: boolean): Promise<AvailablePackage[]> {
+	return invoke<AvailablePackage[]>("available_packages", { refresh });
 }

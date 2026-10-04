@@ -9,6 +9,7 @@ import type { ThemeChoice, ViewMode } from "./theme";
 
 export type Route =
 	| { page: "projects" }
+	| { page: "presets" }
 	| { page: "backups" }
 	| { page: "new" }
 	| { page: "manage"; path: string }
@@ -17,7 +18,7 @@ export type Route =
 	| { page: "logs" }
 	| { page: "settings" };
 
-export type NoticeKind = "info" | "success" | "error";
+export type NoticeKind = "info" | "success" | "warning" | "error";
 
 export interface LogEntry {
 	id: number;

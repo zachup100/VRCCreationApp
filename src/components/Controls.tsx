@@ -100,6 +100,35 @@ export function Switch({
 	);
 }
 
+export function Segmented<T extends string>({
+	value,
+	options,
+	onChange,
+	label,
+}: {
+	value: T;
+	options: { value: T; label: string }[];
+	onChange: (value: T) => void;
+	label: string;
+}) {
+	return (
+		<div className="segmented" role="radiogroup" aria-label={label}>
+			{options.map((option) => (
+				<button
+					key={option.value}
+					type="button"
+					role="radio"
+					aria-checked={option.value === value}
+					className={`segment${option.value === value ? " active" : ""}`}
+					onClick={() => onChange(option.value)}
+				>
+					{option.label}
+				</button>
+			))}
+		</div>
+	);
+}
+
 export interface Tab<T extends string> {
 	id: T;
 	label: string;
@@ -304,7 +333,7 @@ export function EmptyState({
 	children,
 	actions,
 }: {
-	icon: "projects" | "package" | "logs" | "unity" | "learn" | "backups";
+	icon: "projects" | "package" | "logs" | "unity" | "learn" | "backups" | "presets";
 	title: string;
 	children?: ReactNode;
 	actions?: ReactNode;

@@ -1,4 +1,6 @@
 use crate::commands::projects::{category_of, to_info, ProjectInfo};
+use crate::prefs::Prefs;
+use crate::presets::{Preset, PresetStore};
 use crate::store::{now_millis, ProjectStore, StoredProject};
 use crate::vpm::VpmContext;
 use include_dir::{include_dir, Dir, DirEntry};
@@ -8,7 +10,10 @@ use std::sync::Mutex;
 use tauri::State;
 use vrc_get_vpm::environment::PackageInstaller;
 use vrc_get_vpm::io::DefaultProjectIo;
-use vrc_get_vpm::UnityProject;
+use vrc_get_vpm::unity_project::AddPackageOperation;
+use vrc_get_vpm::version::Version;
+use vrc_get_vpm::{PackageCollection, UnityProject, VersionSelector};
+use std::str::FromStr;
 
 static TEMPLATES: Dir = include_dir!("$CARGO_MANIFEST_DIR/project-templates");
 
@@ -194,14 +199,88 @@ async fn build_project(
     Ok(project)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedProject {
+    project: ProjectInfo,
+    warnings: Vec<String>,
+}
+
+async fn apply_preset(
+    project: &mut UnityProject,
+    preset: &Preset,
+    allow_prerelease: bool,
+    vpm: &VpmContext,
+) -> Vec<String> {
+    let mut warnings = Vec::new();
+    let collection = match vpm.collection(false).await {
+        Ok(collection) => collection,
+        Err(message) => return vec![format!("Preset packages were not installed: {message}")],
+    };
+    let latest = VersionSelector::latest_for(Some(project.unity_version()), allow_prerelease);
+
+    let mut wanted = Vec::new();
+    for package in &preset.packages {
+        let found = match &package.version {
+            Some(text) => match Version::from_str(text) {
+                Ok(version) => collection
+                    .find_package_by_name(&package.name, VersionSelector::specific_version(&version)),
+                Err(_) => None,
+            },
+            None => collection.find_package_by_name(&package.name, latest),
+        };
+        match found {
+            Some(info) => {
+                let already = project
+                    .get_locked(&package.name)
+                    .map(|locked| locked.version() == info.version())
+                    .unwrap_or(false);
+                if !already {
+                    wanted.push(info);
+                }
+            }
+            None => warnings.push(match &package.version {
+                Some(version) => format!("{} {} was not found", package.name, version),
+                None => format!("{} has no version for this project", package.name),
+            }),
+        }
+    }
+    if wanted.is_empty() {
+        return warnings;
+    }
+
+    let changes = match project
+        .add_package_request(&*collection, &wanted, AddPackageOperation::AutoDetected, allow_prerelease)
+        .await
+    {
+        Ok(changes) => changes,
+        Err(error) => {
+            warnings.push(format!("Preset packages were not installed: {error}"));
+            return warnings;
+        }
+    };
+    if !changes.conflicts().is_empty() {
+        warnings.push("Preset packages were not installed because they conflict with the project".to_string());
+        return warnings;
+    }
+    let installer = PackageInstaller::new(&vpm.io, Some(&vpm.http));
+    if let Err(error) = project.apply_pending_changes(&installer, changes).await {
+        warnings.push(format!("Preset packages could not be installed: {error}"));
+    }
+    warnings
+}
+
 #[tauri::command]
 pub async fn create_project(
     template: String,
     name: String,
     location: String,
+    preset_id: Option<String>,
     vpm: State<'_, VpmContext>,
     store: State<'_, Mutex<ProjectStore>>,
-) -> Result<ProjectInfo, String> {
+    presets: State<'_, Mutex<PresetStore>>,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<CreatedProject, String> {
     let _busy = vpm.try_busy()?;
     let template = TEMPLATE_LIST
         .iter()
@@ -209,6 +288,26 @@ pub async fn create_project(
         .ok_or_else(|| "Unknown project template".to_string())?;
     let name = name.trim().to_string();
     validate_name(&name)?;
+    let preset = match preset_id {
+        Some(id) => {
+            let found = presets
+                .lock()
+                .map_err(|_| "Presets are unavailable".to_string())?
+                .find(&id)
+                .cloned()
+                .ok_or_else(|| "This preset no longer exists".to_string())?;
+            if found.kind != template.kind {
+                return Err("This preset is for a different template type".to_string());
+            }
+            Some(found)
+        }
+        None => None,
+    };
+    let allow_prerelease = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .settings()
+        .show_prerelease;
 
     let parent = PathBuf::from(location.trim());
     if !parent.is_absolute() || !parent.is_dir() {
@@ -223,12 +322,17 @@ pub async fn create_project(
         Err(error) => return Err(format!("Could not create the project folder: {error}")),
     }
 
-    let project = match build_project(template, &name, &target, &vpm).await {
+    let mut project = match build_project(template, &name, &target, &vpm).await {
         Ok(project) => project,
         Err(message) => {
             let _ = tokio::fs::remove_dir_all(&target).await;
             return Err(message);
         }
+    };
+
+    let warnings = match &preset {
+        Some(preset) => apply_preset(&mut project, preset, allow_prerelease, &vpm).await,
+        None => Vec::new(),
     };
 
     let stored = StoredProject {
@@ -245,5 +349,8 @@ pub async fn create_project(
         .map_err(|_| "Project store is unavailable".to_string())?;
     store.insert(stored.clone());
     store.save().map_err(|error| error.to_string())?;
-    Ok(to_info(&stored))
+    Ok(CreatedProject {
+        project: to_info(&stored),
+        warnings,
+    })
 }

@@ -8,7 +8,7 @@ export function Toasts() {
 			{toasts.map((toast) => (
 				<div key={toast.id} className={`toast toast-${toast.kind}`} role="status">
 					<Icon
-						name={toast.kind === "error" ? "alert" : toast.kind === "success" ? "check" : "info"}
+						name={toast.kind === "error" || toast.kind === "warning" ? "alert" : toast.kind === "success" ? "check" : "info"}
 						size={18}
 					/>
 					<span>{toast.text}</span>

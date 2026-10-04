@@ -31,14 +31,84 @@ pub struct ProjectPackages {
 }
 
 #[derive(Default)]
-struct Accumulator {
-    display_name: Option<String>,
-    versions: Vec<Version>,
+pub(crate) struct Accumulator {
+    pub display_name: Option<String>,
+    pub versions: Vec<Version>,
     official: bool,
     curated: bool,
     local: bool,
     community: Vec<String>,
-    visible: bool,
+    pub visible: bool,
+}
+
+impl Accumulator {
+    pub fn classify(&self) -> (&'static str, Option<String>) {
+        if self.official {
+            ("official", None)
+        } else if self.curated {
+            ("curated", None)
+        } else if !self.community.is_empty() {
+            ("community", self.community.first().cloned())
+        } else {
+            ("local", None)
+        }
+    }
+}
+
+pub(crate) fn hidden_ids(prefs: &Mutex<Prefs>) -> Result<HashSet<String>, String> {
+    let prefs = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?;
+    Ok([OFFICIAL_ID, CURATED_ID, LOCAL_USER_ID]
+        .into_iter()
+        .chain(prefs.hidden().iter().map(String::as_str))
+        .filter(|id| prefs.is_hidden(id))
+        .map(str::to_string)
+        .collect())
+}
+
+pub(crate) fn gather(
+    collection: &vrc_get_vpm::environment::PackageCollection,
+    hidden: &HashSet<String>,
+    allow_prerelease: bool,
+) -> HashMap<String, Accumulator> {
+    let mut names: HashMap<String, Accumulator> = HashMap::new();
+    for info in collection.get_all_packages() {
+        if info.is_yanked() {
+            continue;
+        }
+        let entry = names.entry(info.name().to_string()).or_default();
+        if entry.display_name.is_none() {
+            entry.display_name = info.display_name().map(str::to_string);
+        }
+        if allow_prerelease || !info.version().is_pre() {
+            entry.versions.push(info.version().clone());
+        }
+        match info.repo() {
+            Some(repository) => {
+                let id = repository
+                    .id()
+                    .or(repository.url().map(|url| url.as_str()))
+                    .unwrap_or_default();
+                entry.visible |= !hidden.contains(id);
+                match id {
+                    OFFICIAL_ID => entry.official = true,
+                    CURATED_ID => entry.curated = true,
+                    _ => {
+                        let label = repository.name().unwrap_or(id).to_string();
+                        if !entry.community.contains(&label) {
+                            entry.community.push(label);
+                        }
+                    }
+                }
+            }
+            None => {
+                entry.local = true;
+                entry.visible |= !hidden.contains(LOCAL_USER_ID);
+            }
+        }
+    }
+    names
 }
 
 #[tauri::command]
@@ -64,22 +134,7 @@ pub async fn project_packages(
         .map_err(|_| "Preferences are unavailable".to_string())?
         .settings()
         .show_prerelease;
-    let hidden: HashSet<String> = {
-        let prefs = prefs
-            .lock()
-            .map_err(|_| "Preferences are unavailable".to_string())?;
-        [OFFICIAL_ID, CURATED_ID, LOCAL_USER_ID]
-            .into_iter()
-            .chain(
-                prefs
-                    .hidden()
-                    .iter()
-                    .map(String::as_str),
-            )
-            .filter(|id| prefs.is_hidden(id))
-            .map(str::to_string)
-            .collect()
-    };
+    let hidden = hidden_ids(&prefs)?;
 
     let project = UnityProject::load(DefaultProjectIo::new(PathBuf::from(&path).into_boxed_path()))
         .await
@@ -89,43 +144,7 @@ pub async fn project_packages(
     let unity = project.unity_version();
     let selector = VersionSelector::latest_for(Some(unity), allow_prerelease);
 
-    let mut names: HashMap<String, Accumulator> = HashMap::new();
-    for info in collection.get_all_packages() {
-        if info.is_yanked() {
-            continue;
-        }
-        let entry = names.entry(info.name().to_string()).or_default();
-        if entry.display_name.is_none() {
-            entry.display_name = info.display_name().map(str::to_string);
-        }
-        if allow_prerelease || !info.version().is_pre() {
-            entry.versions.push(info.version().clone());
-        }
-        match info.repo() {
-            Some(repository) => {
-                let id = repository
-                    .id()
-                    .or(repository.url().map(|url| url.as_str()))
-                    .unwrap_or_default();
-                let visible = !hidden.contains(id);
-                entry.visible |= visible;
-                match id {
-                    OFFICIAL_ID => entry.official = true,
-                    CURATED_ID => entry.curated = true,
-                    _ => {
-                        let label = repository.name().unwrap_or(id).to_string();
-                        if !entry.community.contains(&label) {
-                            entry.community.push(label);
-                        }
-                    }
-                }
-            }
-            None => {
-                entry.local = true;
-                entry.visible |= !hidden.contains(LOCAL_USER_ID);
-            }
-        }
-    }
+    let mut names = gather(&collection, &hidden, allow_prerelease);
 
     let mut installed: HashMap<String, (Version, Option<String>)> = HashMap::new();
     for manifest in project.all_installed_packages() {
@@ -158,6 +177,7 @@ pub async fn project_packages(
                 _ => false,
             };
 
+            let (source, repository) = accumulator.classify();
             let mut versions = accumulator.versions;
             if let Some((current, _)) = installed_entry {
                 versions.push(current.clone());
@@ -165,16 +185,6 @@ pub async fn project_packages(
             versions.sort();
             versions.dedup();
             versions.reverse();
-
-            let (source, repository) = if accumulator.official {
-                ("official", None)
-            } else if accumulator.curated {
-                ("curated", None)
-            } else if !accumulator.community.is_empty() {
-                ("community", accumulator.community.first().cloned())
-            } else {
-                ("local", None)
-            };
 
             let display_name = accumulator
                 .display_name

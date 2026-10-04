@@ -1,8 +1,8 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { useApp } from "../AppContext";
-import { createProject, listTemplates } from "../api";
-import type { TemplateInfo } from "../api";
+import { createProject, listPresets, listTemplates } from "../api";
+import type { Preset, TemplateInfo } from "../api";
 import { Button } from "../components/Button";
 import { TextField } from "../components/Controls";
 import { Icon } from "../components/Icons";
@@ -19,6 +19,8 @@ function joinPath(location: string, name: string): string {
 export function NewProjectPage() {
 	const { navigate, notify, editors, editorsLoading, refreshProjects, setPackageOperation, settings } = useApp();
 	const [templates, setTemplates] = useState<TemplateInfo[]>([]);
+	const [presets, setPresets] = useState<Preset[]>([]);
+	const [presetId, setPresetId] = useState("");
 	const [template, setTemplate] = useState("");
 	const [name, setName] = useState("New Project");
 	const [location, setLocation] = useState(() => settings.defaultProjectLocation ?? loadLastLocation());
@@ -35,11 +37,19 @@ export function NewProjectPage() {
 	}, []);
 
 	useEffect(() => {
+		listPresets()
+			.then(setPresets)
+			.catch((failure) => setError(errorMessage(failure)));
+	}, []);
+
+	useEffect(() => {
 		setPackageOperation(creating);
 		return () => setPackageOperation(false);
 	}, [creating, setPackageOperation]);
 
 	const selected = templates.find((item) => item.id === template);
+	const kindPresets = presets.filter((item) => item.kind === selected?.kind);
+	const activePreset = kindPresets.find((item) => item.id === presetId);
 	const unityMissing = selected !== undefined && !editorsLoading && !editors.some((editor) => editor.version === selected.unityVersion);
 
 	const trimmed = name.trim();
@@ -68,9 +78,12 @@ export function NewProjectPage() {
 		setCreating(true);
 		setError(null);
 		try {
-			const project = await createProject(template, trimmed, location.trim());
+			const created = await createProject(template, trimmed, location.trim(), activePreset?.id);
 			saveLastLocation(location.trim());
-			notify("success", `Created ${project.name}`);
+			notify("success", `Created ${created.project.name}`);
+			if (created.warnings.length > 0) {
+				notify("warning", `Some preset packages were skipped: ${created.warnings.join("; ")}`);
+			}
 			await refreshProjects();
 			setPackageOperation(false);
 			navigate({ page: "projects" });
@@ -110,6 +123,38 @@ export function NewProjectPage() {
 					</button>
 				))}
 			</div>
+
+			<h2 className="section-title">Preset</h2>
+			{kindPresets.length === 0 ? (
+				<p className="muted preset-hint">
+					No {selected?.kind ?? ""} presets yet.{" "}
+					<button type="button" className="link-btn" disabled={creating} onClick={() => navigate({ page: "presets" })}>
+						Create a preset
+					</button>
+				</p>
+			) : (
+				<div className="preset-picker" role="radiogroup" aria-label="Preset">
+					{[{ id: "", name: "No preset", packages: [] as Preset["packages"] }, ...kindPresets].map((item) => (
+						<button
+							key={item.id || "none"}
+							type="button"
+							role="radio"
+							aria-checked={(activePreset?.id ?? "") === item.id}
+							disabled={creating}
+							className={`radio-option${(activePreset?.id ?? "") === item.id ? " selected" : ""}`}
+							onClick={() => setPresetId(item.id)}
+						>
+							<span className="radio-dot" />
+							<strong>{item.name}</strong>
+							{item.id !== "" && (
+								<span className="muted">
+									{item.packages.length} {item.packages.length === 1 ? "package" : "packages"}
+								</span>
+							)}
+						</button>
+					))}
+				</div>
+			)}
 
 			<h2 className="section-title">Configure Project</h2>
 			<div className="form">

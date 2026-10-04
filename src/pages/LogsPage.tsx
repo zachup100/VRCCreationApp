@@ -23,7 +23,7 @@ export function LogsPage() {
 					<ul className="log-list">
 						{log.map((entry) => (
 							<li key={entry.id} className={`log-${entry.kind}`}>
-								<Icon name={entry.kind === "error" ? "alert" : entry.kind === "success" ? "check" : "info"} size={16} />
+								<Icon name={entry.kind === "error" || entry.kind === "warning" ? "alert" : entry.kind === "success" ? "check" : "info"} size={16} />
 								<time>{new Date(entry.time).toLocaleTimeString()}</time>
 								<span>{entry.text}</span>
 							</li>

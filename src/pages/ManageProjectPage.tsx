@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
 import { projectApplyChanges, projectPackages, projectPlanChanges } from "../api";
-import type { ChangeRequest, ChangeSummary, PackageRow, PackageSource } from "../api";
+import type { ChangeRequest, ChangeSummary, PackageRow } from "../api";
 import { Button, IconButton } from "../components/Button";
 import { EmptyState, Select, SearchInput } from "../components/Controls";
 import { ReviewChangesModal } from "../components/ReviewChangesModal";
@@ -11,23 +11,8 @@ import { SplitButton } from "../components/Menu";
 import { useProjectDialogs } from "../components/ProjectDialogs";
 import { TypeBadge, VersionChip, canMigrateTo2022, hasEditor, isLegacy } from "../components/ProjectParts";
 import { errorMessage, timeAgo } from "../format";
-
-type RepoFilter = "all" | PackageSource;
-
-const filterOptions: { value: RepoFilter; label: string }[] = [
-	{ value: "all", label: "Multiple Repositories" },
-	{ value: "official", label: "Official" },
-	{ value: "curated", label: "Curated" },
-	{ value: "community", label: "Community" },
-	{ value: "local", label: "Local User Packages" },
-];
-
-const sourceLabels: Record<PackageSource, string> = {
-	official: "Official",
-	curated: "Curated",
-	community: "Community",
-	local: "Local",
-};
+import { filterOptions, sourceLabels } from "../packageUi";
+import type { RepoFilter } from "../packageUi";
 
 type PackagesState =
 	| { status: "loading" }
