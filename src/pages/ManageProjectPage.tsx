@@ -28,6 +28,7 @@ function PackageTable({
 	query,
 	filter,
 	busy,
+	hasSelection,
 	staged,
 	onStage,
 	onReinstall,
@@ -38,6 +39,7 @@ function PackageTable({
 	query: string;
 	filter: RepoFilter;
 	busy: boolean;
+	hasSelection: boolean;
 	staged: Staged;
 	onStage: (name: string, change: StagedChange | null) => void;
 	onReinstall: (name: string) => void;
@@ -144,7 +146,7 @@ function PackageTable({
 							{installed && (
 								<MoreMenu
 									label={`More actions for ${row.displayName}`}
-									items={[{ label: "Reinstall", icon: "refresh", disabled: busy, onSelect: () => onReinstall(row.name) }]}
+									items={[{ label: "Reinstall", icon: "refresh", disabled: busy || hasSelection, onSelect: () => onReinstall(row.name) }]}
 								/>
 							)}
 						</div>
@@ -458,7 +460,8 @@ export function ManageProjectPage({ path }: { path: string }) {
 						rows={packages.rows}
 						query={query}
 						filter={filter}
-						busy={working || stagedCount > 0}
+						busy={working}
+						hasSelection={stagedCount > 0}
 						staged={staged}
 						onStage={stageChange}
 						onReinstall={(name) => void plan({ installs: [], removes: [], reinstall: [name] })}
