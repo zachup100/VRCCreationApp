@@ -173,7 +173,7 @@ export function ProjectsPage() {
 				</div>
 			) : view === "list" ? (
 				<div className="card table">
-					<div className="table-head">
+					<div className="table-head projects">
 						{columns.map((column) => (
 							<button
 								key={column.key}
@@ -190,7 +190,7 @@ export function ProjectsPage() {
 					</div>
 					<div className="table-body">
 						{visible.map((project) => (
-							<div key={project.path} className={`row${project.exists ? "" : " is-missing"}`}>
+							<div key={project.path} className={`row project-row${project.exists ? "" : " is-missing"}`}>
 								<div className="col-star">
 									<StarButton project={project} onToggle={() => void actions.toggleFavorite(project)} />
 								</div>

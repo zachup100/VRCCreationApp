@@ -430,8 +430,8 @@ button.th:hover {
 	color: var(--accent-hover);
 }
 
-.table-head:not(.packages):not(.repos):not(.backups),
-.table-body .row:not(.backups):not(.preset-row) {
+.table-head.projects,
+.table-body .row.project-row {
 	grid-template-columns: 34px minmax(160px, 2.2fr) minmax(120px, 1fr) 150px 130px auto;
 }
 
@@ -1206,8 +1206,8 @@ code {
 }
 
 @media (max-width: 1000px) {
-	.table-head:not(.packages):not(.repos):not(.backups),
-	.table-body .row:not(.backups):not(.preset-row) {
+	.table-head.projects,
+	.table-body .row.project-row {
 		grid-template-columns: 34px minmax(140px, 2fr) minmax(100px, 1fr) 130px auto;
 	}
 
@@ -1668,17 +1668,17 @@ code {
 	font-size: 14px;
 }
 
-.preset-row {
+.row.preset-row {
 	grid-template-columns: minmax(180px, 2fr) minmax(120px, 1fr) minmax(100px, 1fr) auto;
 	min-height: 68px;
 	border-bottom: 1px solid var(--border);
 }
 
-.preset-row:last-child {
+.row.preset-row:last-child {
 	border-bottom: none;
 }
 
-.preset-row:hover {
+.row.preset-row:hover {
 	background: var(--surface-hover);
 }
 
