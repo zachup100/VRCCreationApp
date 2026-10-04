@@ -61,8 +61,8 @@ fn category_from_manifest(text: &str) -> Option<&'static str> {
     let direct = keys("dependencies");
     let has = |list: &[String], name: &str| list.iter().any(|item| item == name);
     vpm_category(
-        has(&locked, "com.vrchat.avatars"),
-        has(&locked, "com.vrchat.worlds"),
+        has(&locked, "com.vrchat.avatars") || has(&direct, "com.vrchat.avatars"),
+        has(&locked, "com.vrchat.worlds") || has(&direct, "com.vrchat.worlds"),
         has(&direct, "com.vrchat.avatars"),
         has(&direct, "com.vrchat.worlds"),
     )
@@ -525,5 +525,13 @@ mod tests {
             plain_zip(&path, &[(&format!("P{index}/Assets/a.txt"), "x")], Some(&meta));
             assert!(read_backup(&path).is_some(), "{app} should be recognised");
         }
+    }
+
+    #[test]
+    fn an_sdk_listed_only_as_a_dependency_still_decides_the_type() {
+        let avatar = r#"{"dependencies":{"com.vrchat.avatars":{"version":"3.x"}}}"#;
+        assert_eq!(category_from_manifest(avatar), Some("avatar"));
+        let world = r#"{"dependencies":{"com.vrchat.worlds":{"version":"3.x"}},"locked":{}}"#;
+        assert_eq!(category_from_manifest(world), Some("world"));
     }
 }
