@@ -9,10 +9,15 @@ import { errorMessage } from "../format";
 import { Button } from "./Button";
 import { Modal, TextField } from "./Controls";
 import { Icon } from "./Icons";
+import { DuplicateProjectModal } from "./DuplicateProjectModal";
 import { ProjectTaskModal } from "./ProjectTaskModal";
 import type { TaskMode } from "./ProjectTaskModal";
 
-type Dialog = { kind: "openWith"; project: ProjectInfo } | { kind: "launch"; project: ProjectInfo } | { kind: "task"; project: ProjectInfo; mode: TaskMode };
+type Dialog =
+	| { kind: "openWith"; project: ProjectInfo }
+	| { kind: "launch"; project: ProjectInfo }
+	| { kind: "duplicate"; project: ProjectInfo }
+	| { kind: "task"; project: ProjectInfo; mode: TaskMode };
 
 function OpenWithModal({ project, onClose }: { project: ProjectInfo; onClose: () => void }) {
 	const { editors } = useApp();
@@ -139,6 +144,7 @@ function LaunchOptionsModal({ project, onClose }: { project: ProjectInfo; onClos
 export function useProjectDialogs(): {
 	openWith: (project: ProjectInfo) => void;
 	launchOptions: (project: ProjectInfo) => void;
+	duplicate: (project: ProjectInfo) => void;
 	task: (project: ProjectInfo, mode: TaskMode) => void;
 	element: ReactNode;
 } {
@@ -147,10 +153,13 @@ export function useProjectDialogs(): {
 	return {
 		openWith: (project) => setDialog({ kind: "openWith", project }),
 		launchOptions: (project) => setDialog({ kind: "launch", project }),
+		duplicate: (project) => setDialog({ kind: "duplicate", project }),
 		task: (project, mode) => setDialog({ kind: "task", project, mode }),
 		element: dialog ? (
 			dialog.kind === "openWith" ? (
 				<OpenWithModal key={dialog.project.path} project={dialog.project} onClose={close} />
+			) : dialog.kind === "duplicate" ? (
+				<DuplicateProjectModal key={dialog.project.path} project={dialog.project} onClose={close} />
 			) : dialog.kind === "task" ? (
 				<ProjectTaskModal key={`${dialog.project.path}-${dialog.mode}`} project={dialog.project} mode={dialog.mode} onClose={close} />
 			) : (

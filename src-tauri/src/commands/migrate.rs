@@ -40,6 +40,7 @@ pub(crate) enum TaskProgress {
     Phase { name: &'static str },
     Backup { done: usize, total: usize },
     Restore { done: usize, total: usize },
+    Duplicate { done: usize, total: usize },
     UnityLog { line: String },
 }
 

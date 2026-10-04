@@ -66,6 +66,7 @@ pub fn run() {
             commands::presets::save_preset,
             commands::presets::delete_preset,
             commands::presets::available_packages,
+            commands::duplicate::duplicate_project,
             commands::create::list_templates,
             commands::create::create_project,
             commands::changes::project_plan_changes,

@@ -244,6 +244,7 @@ export type TaskProgress =
 	| { kind: "phase"; name: "backup" | "packages" | "unity" }
 	| { kind: "backup"; done: number; total: number }
 	| { kind: "restore"; done: number; total: number }
+	| { kind: "duplicate"; done: number; total: number }
 	| { kind: "unityLog"; line: string };
 
 export function backupProject(path: string): Promise<BackupResult> {
@@ -348,4 +349,8 @@ export function clearBackendLogs(): Promise<void> {
 
 export function projectCleanupManifest(path: string): Promise<string[]> {
 	return invoke<string[]>("project_cleanup_manifest", { path });
+}
+
+export function duplicateProject(path: string, name: string, includeLibrary: boolean): Promise<ProjectInfo> {
+	return invoke<ProjectInfo>("duplicate_project", { path, name, includeLibrary });
 }

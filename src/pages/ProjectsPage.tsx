@@ -78,6 +78,7 @@ export function ProjectsPage() {
 		...(canMigrateTo2022(project)
 			? [{ label: "Migrate to Unity 2022...", icon: "upload" as const, disabled: !project.exists, onSelect: () => dialogs.task(project, "unity2022") }]
 			: []),
+		{ label: "Duplicate...", icon: "copy", disabled: !project.exists, onSelect: () => dialogs.duplicate(project) },
 		{ label: "Back Up Project...", icon: "download", disabled: !project.exists, onSelect: () => dialogs.task(project, "backup") },
 		{ label: "Open Folder", icon: "folderOpen", disabled: !project.exists, onSelect: () => void actions.openFolder(project) },
 		{ label: "Copy Path", icon: "copy", onSelect: () => void actions.copyPath(project) },
