@@ -986,6 +986,10 @@ code {
 	color: #fff;
 }
 
+.checkbox > * {
+	pointer-events: none;
+}
+
 .checkbox.checked {
 	background: var(--accent);
 	border-color: var(--accent);
