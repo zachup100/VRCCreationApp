@@ -4,6 +4,7 @@ import { useActions } from "../actions";
 import type { ProjectInfo } from "../api";
 import { Button, IconButton } from "../components/Button";
 import { ConfirmModal, EmptyState, SearchInput } from "../components/Controls";
+import { FolderDrop } from "../components/FolderDrop";
 import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
 import { useProjectDialogs } from "../components/ProjectDialogs";
@@ -50,7 +51,7 @@ function StarButton({ project, onToggle }: { project: ProjectInfo; onToggle: () 
 }
 
 export function ProjectsPage() {
-	const { projects, projectsLoading, refreshProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
+	const { packageOperation, projects, projectsLoading, refreshProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
 	const actions = useActions();
 	const dialogs = useProjectDialogs();
 	const [query, setQuery] = useState("");
@@ -236,6 +237,7 @@ export function ProjectsPage() {
 				</div>
 			)}
 
+			<FolderDrop enabled={!packageOperation} onDrop={(paths) => void actions.addPaths(paths)} />
 			{dialogs.element}
 			{pendingRemove && (
 				<ConfirmModal

@@ -2082,3 +2082,38 @@ code {
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+.drop-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 55;
+	display: grid;
+	place-items: center;
+	background: rgba(0, 0, 0, 0.55);
+	pointer-events: none;
+}
+
+.drop-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 40px 56px;
+	background: var(--surface-raised);
+	border: 2px dashed var(--accent);
+	border-radius: 16px;
+	box-shadow: var(--shadow);
+	text-align: center;
+}
+
+.drop-card svg {
+	color: var(--accent-hover);
+}
+
+.drop-card strong {
+	font-size: 20px;
+}
+
+.drop-card span {
+	color: var(--muted);
+}

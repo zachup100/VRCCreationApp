@@ -25,7 +25,29 @@ export function useActions() {
 		}
 	};
 
+	const addPaths = async (paths: string[]) => {
+		let added = 0;
+		const failures: string[] = [];
+		for (const path of paths) {
+			try {
+				await addProject(path);
+				added += 1;
+			} catch (error) {
+				const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+				failures.push(`${name}: ${errorMessage(error)}`);
+			}
+		}
+		if (added > 0) {
+			notify("success", added === 1 ? "Added 1 project" : `Added ${added} projects`);
+		}
+		if (failures.length > 0) {
+			notify("warning", failures.slice(0, 3).join("; ") + (failures.length > 3 ? ` and ${failures.length - 3} more` : ""));
+		}
+		await refreshProjects();
+	};
+
 	return {
+		addPaths,
 		addExisting: () =>
 			guard(async () => {
 				const selected = await open({ directory: true, multiple: false, title: "Select a Unity project folder" });
