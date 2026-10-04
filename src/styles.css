@@ -446,6 +446,18 @@ button:disabled {
 	color: var(--text);
 }
 
+.th.col-name {
+	flex-direction: row;
+}
+
+.th.col-star {
+	justify-content: center;
+}
+
+.th.chip-offset {
+	padding-left: 13px;
+}
+
 button.th:hover {
 	color: var(--accent-hover);
 }

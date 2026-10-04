@@ -18,7 +18,7 @@ const columns: { key: SortKey; label: string; className: string }[] = [
 	{ key: "favorite", label: "", className: "col-star" },
 	{ key: "name", label: "Project Name", className: "col-name" },
 	{ key: "type", label: "Project Type", className: "col-type" },
-	{ key: "unity", label: "Unity", className: "col-unity" },
+	{ key: "unity", label: "Unity", className: "col-unity chip-offset" },
 	{ key: "modified", label: "Last Modified", className: "col-modified" },
 ];
 
@@ -63,8 +63,13 @@ export function ProjectsPage() {
 		const filtered = needle
 			? projects.filter((project) => `${project.name} ${project.path}`.toLowerCase().includes(needle))
 			: projects;
-		const sorted = [...filtered].sort((a, b) => compare(a, b, sort.key));
-		return sort.desc ? sorted.reverse() : sorted;
+		const direction = sort.desc ? -1 : 1;
+		return [...filtered].sort((a, b) => {
+			if (sort.key !== "favorite" && a.favorite !== b.favorite) {
+				return a.favorite ? -1 : 1;
+			}
+			return compare(a, b, sort.key) * direction;
+		});
 	}, [projects, query, sort]);
 
 	const toggleSort = (key: SortKey) => {

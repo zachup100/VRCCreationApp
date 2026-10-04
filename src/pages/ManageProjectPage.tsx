@@ -431,7 +431,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			<div className="card table">
 				<div className="table-head packages with-menu">
 					<span className="th">Name</span>
-					<span className="th">Installed Version</span>
+					<span className="th chip-offset">Installed Version</span>
 					<span className="th">Latest Version</span>
 					<span className="th">Source</span>
 					<span className="th" />

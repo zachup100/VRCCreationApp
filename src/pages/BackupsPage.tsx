@@ -80,7 +80,7 @@ export function BackupsPage() {
 					<div className="table-head backups">
 						<span className="th">Project Name</span>
 						<span className="th">Project Type</span>
-						<span className="th">Unity</span>
+						<span className="th chip-offset">Unity</span>
 						<span className="th">Created</span>
 						<span className="th" />
 					</div>
