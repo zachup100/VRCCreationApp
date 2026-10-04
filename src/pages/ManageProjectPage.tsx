@@ -374,7 +374,12 @@ export function ManageProjectPage({ path }: { path: string }) {
 				</div>
 			)}
 			{review && (
-				<ReviewChangesModal summary={review.summary} busy={working} onApply={() => void apply()} onClose={() => setReview(null)} />
+				<ReviewChangesModal summary={review.summary} busy={working} onApply={() => void apply()}
+					onClose={() => {
+						setReview(null);
+						setStaged({});
+					}}
+				/>
 			)}
 			<div className="page-foot">
 				<Button variant="ghost" onClick={() => navigate({ page: "projects" })}>
