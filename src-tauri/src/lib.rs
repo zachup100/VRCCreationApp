@@ -39,6 +39,7 @@ pub fn run() {
             commands::repositories::repository_add,
             commands::repositories::repository_remove,
             commands::repositories::repository_set_hidden,
+            commands::repositories::import_packages_from_vcc,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

@@ -8,7 +8,13 @@ export function ToolsPage() {
 	const actions = useActions();
 	const tools: { title: string; blurb: string; icon: IconName; run: () => void }[] = [
 		{ title: "Add Existing Project", blurb: "Pick a Unity project folder to add to the list.", icon: "folderOpen", run: () => void actions.addExisting() },
-		{ title: "Import From VCC", blurb: "Copy projects from the VRChat Creator Companion.", icon: "download", run: () => void actions.importVcc() },
+		{ title: "Import Projects From VCC", blurb: "Copy your project list from the VRChat Creator Companion.", icon: "download", run: () => void actions.importVcc() },
+		{
+			title: "Import Packages From VCC",
+			blurb: "Copy repositories and package folders from the VRChat Creator Companion.",
+			icon: "package",
+			run: () => void actions.importPackagesVcc(),
+		},
 		{
 			title: "Rescan Unity Editors",
 			blurb: "Look for newly installed Unity editors.",

@@ -121,7 +121,7 @@ export function ProjectsPage() {
 					onClick={() => navigate({ page: "new" })}
 					items={[
 						{ label: "Add Existing Project", icon: "folderOpen", onSelect: () => void actions.addExisting() },
-						{ label: "Import From VCC", icon: "download", onSelect: () => void actions.importVcc() },
+						{ label: "Import Projects From VCC", icon: "download", onSelect: () => void actions.importVcc() },
 					]}
 				>
 					Create New Project
@@ -142,7 +142,7 @@ export function ProjectsPage() {
 									Add Existing Project
 								</Button>
 								<Button icon="download" onClick={() => void actions.importVcc()}>
-									Import From VCC
+									Import Projects From VCC
 								</Button>
 							</>
 						}

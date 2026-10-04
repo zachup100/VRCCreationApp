@@ -30,6 +30,11 @@ export interface Toast {
 	text: string;
 }
 
+export interface ImportProgress {
+	done: number;
+	total: number;
+}
+
 interface AppContextValue {
 	route: Route;
 	navigate: (route: Route) => void;
@@ -40,6 +45,10 @@ interface AppContextValue {
 	editorsLoading: boolean;
 	editorsError: string | null;
 	refreshEditors: () => Promise<void>;
+	packageImport: ImportProgress | null;
+	setPackageImport: (progress: ImportProgress | null) => void;
+	repositoriesVersion: number;
+	bumpRepositories: () => void;
 	notify: (kind: NoticeKind, text: string) => void;
 	toasts: Toast[];
 	dismissToast: (id: number) => void;
@@ -72,6 +81,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	const [log, setLog] = useState<LogEntry[]>([]);
 	const [theme, setThemeState] = useState<ThemeChoice>(loadTheme);
 	const [view, setViewState] = useState<ViewMode>(loadView);
+	const [packageImport, setPackageImport] = useState<ImportProgress | null>(null);
+	const [repositoriesVersion, setRepositoriesVersion] = useState(0);
 	const nextId = useRef(1);
 
 	const dismissToast = useCallback((id: number) => {
@@ -148,6 +159,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			editorsLoading,
 			editorsError,
 			refreshEditors,
+			packageImport,
+			setPackageImport,
+			repositoriesVersion,
+			bumpRepositories: () => setRepositoriesVersion((value) => value + 1),
 			notify,
 			toasts,
 			dismissToast,
@@ -167,6 +182,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			editorsLoading,
 			editorsError,
 			refreshEditors,
+			packageImport,
+			repositoriesVersion,
 			notify,
 			toasts,
 			dismissToast,

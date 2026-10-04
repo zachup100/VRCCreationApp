@@ -1391,3 +1391,10 @@ code {
 		transform: translate(-50%, 10px);
 	}
 }
+
+.button-stack {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}

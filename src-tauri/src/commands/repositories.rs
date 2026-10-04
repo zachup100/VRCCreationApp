@@ -4,8 +4,9 @@ use indexmap::IndexMap;
 use serde::Serialize;
 use serde_json::{Map, Value};
 use std::sync::Mutex;
-use tauri::State;
-use vrc_get_vpm::environment::{add_remote_repo, Settings};
+use tauri::{AppHandle, Emitter, State};
+use vrc_get_vpm::environment::{add_remote_repo, AddRepositoryErr, AddUserPackageResult, Settings};
+use vrc_get_vpm::io::DefaultEnvironmentIo;
 use vrc_get_vpm::repository::RemoteRepository;
 use vrc_get_vpm::VersionSelector;
 
@@ -336,4 +337,135 @@ pub fn repository_set_hidden(
     let mut prefs = lock_prefs(&prefs)?;
     prefs.set_hidden(&id, hidden);
     prefs.save().map_err(|error| error.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PackageImportResult {
+    repositories_found: usize,
+    repositories_added: usize,
+    repositories_skipped: usize,
+    folders_found: usize,
+    folders_added: usize,
+    failures: Vec<String>,
+}
+
+#[derive(Serialize, Clone)]
+struct ImportProgress {
+    done: usize,
+    total: usize,
+}
+
+struct RepositoryCandidate {
+    url: Option<reqwest::Url>,
+    headers: IndexMap<Box<str>, Box<str>>,
+    name: Option<String>,
+    path: std::path::PathBuf,
+}
+
+#[tauri::command]
+pub async fn import_packages_from_vcc(
+    app: AppHandle,
+    vpm: State<'_, VpmContext>,
+) -> Result<PackageImportResult, String> {
+    let vcc_io = DefaultEnvironmentIo::new_default();
+    let settings_file = vcc_io.resolve(std::path::Path::new("settings.json"));
+    if !settings_file.is_file() {
+        return Err(format!(
+            "No VCC settings found at {}",
+            settings_file.display()
+        ));
+    }
+
+    let (candidates, folders): (Vec<RepositoryCandidate>, Vec<std::path::PathBuf>) = {
+        let vcc_settings = Settings::load(&vcc_io)
+            .await
+            .map_err(|error| format!("Could not read the VCC settings: {error}"))?;
+        (
+            vcc_settings
+                .get_user_repos()
+                .iter()
+                .map(|repo| RepositoryCandidate {
+                    url: repo.url().cloned(),
+                    headers: repo.headers().clone(),
+                    name: repo.name().map(str::to_string),
+                    path: repo.local_path().to_path_buf(),
+                })
+                .collect(),
+            vcc_settings.user_package_folders().to_vec(),
+        )
+    };
+
+    let total = candidates.len() + folders.len();
+    let mut done = 0;
+    let mut result = PackageImportResult {
+        repositories_found: candidates.len(),
+        repositories_added: 0,
+        repositories_skipped: 0,
+        folders_found: folders.len(),
+        folders_added: 0,
+        failures: Vec::new(),
+    };
+    let _ = app.emit("vcc-import-progress", ImportProgress { done, total });
+
+    let _guard = vpm.lock.lock().await;
+    let mut settings = Settings::load(&vpm.io)
+        .await
+        .map_err(|error| format!("Could not read repository settings: {error}"))?;
+
+    for candidate in candidates {
+        let label = candidate
+            .name
+            .clone()
+            .or_else(|| candidate.url.as_ref().map(|url| url.to_string()))
+            .unwrap_or_else(|| candidate.path.display().to_string());
+        match candidate.url {
+            Some(url) => {
+                let outcome = add_remote_repo(
+                    &mut settings,
+                    url,
+                    candidate.name.as_deref(),
+                    candidate.headers,
+                    &vpm.io,
+                    &vpm.http,
+                )
+                .await;
+                match outcome {
+                    Ok(()) => result.repositories_added += 1,
+                    Err(AddRepositoryErr::AlreadyAdded) => result.repositories_skipped += 1,
+                    Err(error) => result.failures.push(format!("{label}: {error}")),
+                }
+            }
+            None => {
+                if settings.add_local_repo(&candidate.path, candidate.name.as_deref()) {
+                    result.repositories_added += 1;
+                } else {
+                    result.repositories_skipped += 1;
+                }
+            }
+        }
+        done += 1;
+        let _ = app.emit("vcc-import-progress", ImportProgress { done, total });
+    }
+
+    for folder in folders {
+        match settings.add_user_package(&folder, &vpm.io).await {
+            AddUserPackageResult::Success => result.folders_added += 1,
+            AddUserPackageResult::AlreadyAdded => {}
+            AddUserPackageResult::NonAbsolute | AddUserPackageResult::BadPackage => result
+                .failures
+                .push(format!("{}: not a valid package folder", folder.display())),
+        }
+        done += 1;
+        let _ = app.emit("vcc-import-progress", ImportProgress { done, total });
+    }
+
+    if result.repositories_added > 0 || result.folders_added > 0 {
+        settings
+            .save(&vpm.io)
+            .await
+            .map_err(|error| format!("Could not save repository settings: {error}"))?;
+        vpm.invalidate().await;
+    }
+    Ok(result)
 }

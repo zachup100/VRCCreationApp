@@ -20,6 +20,16 @@ const tabs: Tab<TabId>[] = [
 	{ id: "appearance", label: "Appearance" },
 ];
 
+function ImportPackagesButton() {
+	const actions = useActions();
+	const progress = actions.packageImportRunning;
+	return (
+		<Button icon="package" disabled={progress !== null} onClick={() => void actions.importPackagesVcc()}>
+			{progress ? (progress.total > 0 ? `Importing ${progress.done}/${progress.total}...` : "Importing...") : "Import Packages From VCC"}
+		</Button>
+	);
+}
+
 function GeneralTab() {
 	const { editors, editorsLoading, editorsError, refreshEditors } = useApp();
 	const actions = useActions();
@@ -72,11 +82,14 @@ function GeneralTab() {
 				<div className="section-head">
 					<div>
 						<h2>VRChat Creator Companion</h2>
-						<p className="muted">Copy the project list from an existing VCC install. Your VCC data is only read, never changed.</p>
+						<p className="muted">Copy your projects, repositories and package folders from an existing VCC install. Your VCC data is only read, never changed.</p>
 					</div>
-					<Button icon="download" onClick={() => void actions.importVcc()}>
-						Import From VCC
-					</Button>
+					<div className="button-stack">
+						<Button icon="download" onClick={() => void actions.importVcc()}>
+							Import Projects From VCC
+						</Button>
+						<ImportPackagesButton />
+					</div>
 				</div>
 			</section>
 		</>
@@ -84,7 +97,7 @@ function GeneralTab() {
 }
 
 function PackagesTab() {
-	const { notify } = useApp();
+	const { notify, repositoriesVersion } = useApp();
 	const [info, setInfo] = useState<RepositoriesInfo | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [adding, setAdding] = useState(false);
@@ -101,7 +114,7 @@ function PackagesTab() {
 
 	useEffect(() => {
 		void load();
-	}, [load]);
+	}, [load, repositoriesVersion]);
 
 	const guard = async (task: () => Promise<void>) => {
 		try {
@@ -123,9 +136,12 @@ function PackagesTab() {
 						Official and curated repositories are included by default. You can add community repositories with Add Repository.
 					</p>
 				</div>
-				<Button icon="plusCircle" variant="ghost" onClick={() => setAdding(true)}>
-					Add Repository
-				</Button>
+				<div className="button-stack">
+					<ImportPackagesButton />
+					<Button icon="plusCircle" variant="ghost" onClick={() => setAdding(true)}>
+						Add Repository
+					</Button>
+				</div>
 			</div>
 			{loadError && <p className="field-error">{loadError}</p>}
 			<div className="card table">

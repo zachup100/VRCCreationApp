@@ -1,8 +1,10 @@
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useApp } from "./AppContext";
 import {
 	addProject,
 	importFromVcc,
+	importPackagesFromVcc,
 	openExternal,
 	openProject,
 	openProjectFolder,
@@ -13,7 +15,7 @@ import type { ProjectInfo } from "./api";
 import { errorMessage } from "./format";
 
 export function useActions() {
-	const { notify, refreshProjects } = useApp();
+	const { notify, refreshProjects, packageImport, setPackageImport, bumpRepositories } = useApp();
 
 	const guard = async (task: () => Promise<void>) => {
 		try {
@@ -39,10 +41,39 @@ export function useActions() {
 				const result = await importFromVcc();
 				notify(
 					result.imported > 0 ? "success" : "info",
-					`VCC import finished: ${result.imported} imported, ${result.skipped} already in the list`,
+					`VCC project import finished: ${result.imported} imported, ${result.skipped} already in the list`,
 				);
 				await refreshProjects();
 			}),
+		packageImportRunning: packageImport,
+		importPackagesVcc: async () => {
+			if (packageImport) {
+				return;
+			}
+			setPackageImport({ done: 0, total: 0 });
+			let unlisten: (() => void) | null = null;
+			try {
+				unlisten = await listen<{ done: number; total: number }>("vcc-import-progress", (event) => setPackageImport(event.payload));
+				const result = await importPackagesFromVcc();
+				const added = result.repositoriesAdded + result.foldersAdded;
+				const skipped = result.repositoriesSkipped;
+				notify(
+					added > 0 ? "success" : "info",
+					`VCC package import finished: ${result.repositoriesAdded} repositories and ${result.foldersAdded} package folders added, ${skipped} repositories already installed`,
+				);
+				if (result.failures.length > 0) {
+					const shown = result.failures.slice(0, 3).join("; ");
+					const more = result.failures.length > 3 ? ` and ${result.failures.length - 3} more` : "";
+					notify("error", `${result.failures.length} could not be imported: ${shown}${more}`);
+				}
+				bumpRepositories();
+			} catch (error) {
+				notify("error", errorMessage(error));
+			} finally {
+				unlisten?.();
+				setPackageImport(null);
+			}
+		},
 		open: (project: ProjectInfo) =>
 			guard(async () => {
 				await openProject(project.path);

@@ -159,3 +159,16 @@ export function projectPlanChanges(path: string, request: ChangeRequest): Promis
 export function projectApplyChanges(path: string, request: ChangeRequest): Promise<void> {
 	return invoke<void>("project_apply_changes", { path, request });
 }
+
+export interface PackageImportResult {
+	repositoriesFound: number;
+	repositoriesAdded: number;
+	repositoriesSkipped: number;
+	foldersFound: number;
+	foldersAdded: number;
+	failures: string[];
+}
+
+export function importPackagesFromVcc(): Promise<PackageImportResult> {
+	return invoke<PackageImportResult>("import_packages_from_vcc");
+}
