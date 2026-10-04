@@ -2166,3 +2166,35 @@ code {
 .dep-name {
 	color: var(--text);
 }
+
+.check-inline {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	font-size: 14px;
+	white-space: nowrap;
+}
+
+.section-foot {
+	display: flex;
+	margin-top: 4px;
+}
+
+.table-head.hidden-pkgs,
+.row.hidden-pkgs {
+	grid-template-columns: 44px minmax(200px, 2.4fr) minmax(110px, 1fr) 110px;
+}
+
+.row.hidden-pkgs {
+	min-height: 56px;
+	border-bottom: 1px solid var(--border);
+}
+
+.row.hidden-pkgs:hover {
+	background: var(--surface-hover);
+}
+
+.row.hidden-pkgs.is-hidden .pkg-name,
+.row.hidden-pkgs.is-hidden .latest {
+	opacity: 0.55;
+}

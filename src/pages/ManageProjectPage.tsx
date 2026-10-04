@@ -4,7 +4,7 @@ import { useActions } from "../actions";
 import { projectApplyChanges, projectCleanupManifest, projectPackages, projectPlanChanges } from "../api";
 import type { ChangeRequest, ChangeSummary, PackageRow } from "../api";
 import { Button, IconButton } from "../components/Button";
-import { ConfirmModal, EmptyState, Select, SearchInput } from "../components/Controls";
+import { Checkbox, ConfirmModal, EmptyState, Select, SearchInput } from "../components/Controls";
 import { ReviewChangesModal } from "../components/ReviewChangesModal";
 import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
@@ -12,6 +12,7 @@ import { useProjectDialogs } from "../components/ProjectDialogs";
 import { TypeBadge, VersionChip, canMigrateTo2022, hasEditor, isLegacy } from "../components/ProjectParts";
 import { errorMessage, timeAgo } from "../format";
 import { filterOptions, sourceLabels } from "../packageUi";
+import { loadOnlySupported, saveOnlySupported } from "../theme";
 import type { RepoFilter } from "../packageUi";
 
 type PackagesState =
@@ -31,6 +32,7 @@ function PackageTable({
 	onStage,
 	onReinstall,
 	projectKind,
+	onlySupported,
 }: {
 	rows: PackageRow[];
 	query: string;
@@ -40,6 +42,7 @@ function PackageTable({
 	onStage: (name: string, change: StagedChange | null) => void;
 	onReinstall: (name: string) => void;
 	projectKind: "world" | "avatar" | null;
+	onlySupported: boolean;
 }) {
 	const [targets, setTargets] = useState<Record<string, string>>({});
 	const visible = useMemo(() => {
@@ -47,9 +50,10 @@ function PackageTable({
 		return rows.filter(
 			(row) =>
 				(filter === "all" || row.source === filter) &&
+				(!onlySupported || projectKind === null || row.requiresSdk === null || row.requiresSdk === projectKind || row.installedVersion !== null) &&
 				(!needle || `${row.displayName} ${row.name}`.toLowerCase().includes(needle)),
 		);
-	}, [rows, query, filter]);
+	}, [rows, query, filter, onlySupported, projectKind]);
 
 	if (visible.length === 0) {
 		return (
@@ -162,9 +166,11 @@ export function ManageProjectPage({ path }: { path: string }) {
 	const [review, setReview] = useState<{ request: ChangeRequest; summary: ChangeSummary } | null>(null);
 	const [working, setWorking] = useState(false);
 	const [confirmCleanup, setConfirmCleanup] = useState(false);
+	const [onlySupported, setOnlySupported] = useState(loadOnlySupported);
 	const [staged, setStaged] = useState<Staged>({});
 	const project = projects.find((item) => item.path === path);
 	const projectExists = project?.exists ?? false;
+	const projectKind = project?.category.endsWith("world") ? "world" : project?.category.endsWith("avatar") ? "avatar" : null;
 
 	const load = useCallback(
 		async (refresh: boolean) => {
@@ -398,6 +404,19 @@ export function ManageProjectPage({ path }: { path: string }) {
 						Upgrade All ({updatable.length})
 					</Button>
 				)}
+				{projectKind !== null && (
+					<label className="check-inline">
+						<Checkbox
+							checked={onlySupported}
+							label={`Only show packages supported by ${projectKind} projects`}
+							onChange={(value) => {
+								setOnlySupported(value);
+								saveOnlySupported(value);
+							}}
+						/>
+						<span>Only show supported packages ({projectKind === "world" ? "World" : "Avatar"})</span>
+					</label>
+				)}
 				<SearchInput value={query} onChange={setQuery} placeholder="Search Packages..." />
 				<span className="label-inline">Selected Repos</span>
 				<Select
@@ -443,7 +462,8 @@ export function ManageProjectPage({ path }: { path: string }) {
 						staged={staged}
 						onStage={stageChange}
 						onReinstall={(name) => void plan({ installs: [], removes: [], reinstall: [name] })}
-						projectKind={project.category.endsWith("world") ? "world" : project.category.endsWith("avatar") ? "avatar" : null}
+						projectKind={projectKind}
+						onlySupported={onlySupported}
 					/>
 				)}
 			</div>

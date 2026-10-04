@@ -23,6 +23,8 @@ pub struct AppSettings {
 struct PrefsFile {
     #[serde(default)]
     hidden_repositories: Vec<String>,
+    #[serde(default)]
+    hidden_packages: Vec<String>,
     #[serde(flatten)]
     settings: AppSettings,
 }
@@ -55,6 +57,27 @@ impl Prefs {
         if hidden {
             self.data.hidden_repositories.push(id.to_string());
         }
+    }
+
+    pub fn hidden_package_set(&self) -> std::collections::HashSet<String> {
+        self.data.hidden_packages.iter().cloned().collect()
+    }
+
+    pub fn set_packages_hidden(&mut self, names: &[String], hidden: bool) {
+        self.data
+            .hidden_packages
+            .retain(|existing| !names.contains(existing));
+        if hidden {
+            for name in names {
+                if !self.data.hidden_packages.contains(name) {
+                    self.data.hidden_packages.push(name.clone());
+                }
+            }
+        }
+    }
+
+    pub fn show_all_packages(&mut self) {
+        self.data.hidden_packages.clear();
     }
 
     pub fn settings(&self) -> &AppSettings {
@@ -125,5 +148,30 @@ mod tests {
         assert!(loaded.settings().show_prerelease);
         assert_eq!(loaded.settings().default_unity_args, "-x");
         assert_eq!(loaded.settings().backup_location.as_deref(), Some("/backups"));
+    }
+
+    #[test]
+    fn packages_can_be_hidden_and_shown_in_bulk() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut prefs = Prefs::load(dir.path().to_path_buf());
+        let names = vec!["a".to_string(), "b".to_string()];
+        prefs.set_packages_hidden(&names, true);
+        prefs.set_packages_hidden(&["a".to_string()], true);
+        assert_eq!(prefs.hidden_package_set().len(), 2);
+        prefs.set_packages_hidden(&["a".to_string()], false);
+        assert!(!prefs.hidden_package_set().contains("a"));
+        assert!(prefs.hidden_package_set().contains("b"));
+        prefs.show_all_packages();
+        assert!(prefs.hidden_package_set().is_empty());
+    }
+
+    #[test]
+    fn hidden_packages_survive_a_save_and_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut prefs = Prefs::load(dir.path().to_path_buf());
+        prefs.set_packages_hidden(&["com.example.pkg".to_string()], true);
+        prefs.save().unwrap();
+        let loaded = Prefs::load(dir.path().to_path_buf());
+        assert!(loaded.hidden_package_set().contains("com.example.pkg"));
     }
 }

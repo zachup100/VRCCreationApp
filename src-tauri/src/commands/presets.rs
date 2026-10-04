@@ -30,6 +30,7 @@ pub struct AvailablePackage {
     source: &'static str,
     repository: Option<String>,
     requires_sdk: Option<&'static str>,
+    hidden: bool,
 }
 
 fn lock<'a>(
@@ -128,6 +129,10 @@ pub async fn available_packages(
         .settings()
         .show_prerelease;
     let hidden = hidden_ids(&prefs)?;
+    let hidden_packages = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .hidden_package_set();
     let collection = vpm.collection(refresh).await?;
 
     let mut rows: Vec<AvailablePackage> = gather(&collection, &hidden, allow_prerelease)
@@ -149,6 +154,7 @@ pub async fn available_packages(
                     .map(String::as_str),
             );
             AvailablePackage {
+                hidden: hidden_packages.contains(&name),
                 requires_sdk,
                 display_name: accumulator.display_name.unwrap_or_else(|| name.clone()),
                 latest_version: versions.first().map(Version::to_string),
@@ -254,4 +260,31 @@ mod tests {
         let (_dir, store) = empty_store();
         assert!(build_preset(input(Some("gone"), "Name", "world", vec![package("a", None)]), &store, 1).is_err());
     }
+}
+#[tauri::command]
+pub fn set_packages_hidden(
+    names: Vec<String>,
+    hidden: bool,
+    vpm: State<'_, VpmContext>,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
+    let mut prefs = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?;
+    prefs.set_packages_hidden(&names, hidden);
+    prefs.save().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn show_all_packages(
+    vpm: State<'_, VpmContext>,
+    prefs: State<'_, Mutex<Prefs>>,
+) -> Result<(), String> {
+    let _busy = vpm.try_busy()?;
+    let mut prefs = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?;
+    prefs.show_all_packages();
+    prefs.save().map_err(|error| error.to_string())
 }

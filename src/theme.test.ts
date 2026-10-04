@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { applyTheme, loadLastLocation, loadTheme, loadView, saveLastLocation, saveTheme, saveView } from "./theme";
+import { applyTheme, loadLastLocation, loadOnlySupported, loadTheme, loadView, saveLastLocation, saveOnlySupported, saveTheme, saveView } from "./theme";
 
 beforeEach(() => {
 	localStorage.clear();
@@ -48,6 +48,16 @@ describe("saved preferences", () => {
 		expect(loadView()).toBe("list");
 		expect(() => saveTheme("light")).not.toThrow();
 		expect(() => saveLastLocation("/x")).not.toThrow();
+	});
+});
+
+describe("only supported packages preference", () => {
+	it("defaults to off and remembers the choice", () => {
+		expect(loadOnlySupported()).toBe(false);
+		saveOnlySupported(true);
+		expect(loadOnlySupported()).toBe(true);
+		saveOnlySupported(false);
+		expect(loadOnlySupported()).toBe(false);
 	});
 });
 

@@ -4,9 +4,10 @@ import { availablePackages, savePreset } from "../api";
 import type { AvailablePackage, Preset, PresetKind } from "../api";
 import { errorMessage } from "../format";
 import { filterOptions, sourceLabels } from "../packageUi";
+import { loadOnlySupported, saveOnlySupported } from "../theme";
 import type { RepoFilter } from "../packageUi";
 import { Button, IconButton } from "./Button";
-import { EmptyState, SearchInput, Segmented, Select, TextField } from "./Controls";
+import { Checkbox, EmptyState, SearchInput, Segmented, Select, TextField } from "./Controls";
 import { Icon } from "./Icons";
 
 const LATEST = "latest";
@@ -37,6 +38,7 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 	const [query, setQuery] = useState("");
 	const [filter, setFilter] = useState<RepoFilter>("all");
 	const [saving, setSaving] = useState(false);
+	const [onlySupported, setOnlySupported] = useState(loadOnlySupported);
 	const [error, setError] = useState<string | null>(null);
 
 	const fetchRows = useCallback(
@@ -55,6 +57,7 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 						source: "unavailable",
 						repository: null,
 						requiresSdk: null,
+						hidden: false,
 					}));
 				const initial = new Set(preset?.packages.map((item) => item.name) ?? []);
 				setLoad({ status: "ready", rows: sortRows([...available, ...missing], initial) });
@@ -82,9 +85,11 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 		return load.rows.filter(
 			(row) =>
 				(filter === "all" || row.source === filter || (row.source === "unavailable" && selected.has(row.name))) &&
+				(!row.hidden || selected.has(row.name)) &&
+				(!onlySupported || row.requiresSdk === null || row.requiresSdk === kind || selected.has(row.name)) &&
 				(!needle || `${row.displayName} ${row.name}`.toLowerCase().includes(needle)),
 		);
-	}, [load, query, filter, selected]);
+	}, [load, query, filter, selected, onlySupported, kind]);
 
 	const toggle = (rowName: string) => {
 		setSelected((current) => {
@@ -152,6 +157,17 @@ export function PresetEditor({ preset, onClose }: { preset: Preset | null; onClo
 				<h2>Packages</h2>
 				<IconButton icon="refresh" label="Refresh packages" spinning={refreshing} disabled={refreshing} onClick={() => void fetchRows(true)} />
 				<span className="spacer" />
+				<label className="check-inline">
+					<Checkbox
+						checked={onlySupported}
+						label={`Only show packages supported by ${kind} projects`}
+						onChange={(value) => {
+							setOnlySupported(value);
+							saveOnlySupported(value);
+						}}
+					/>
+					<span>Only show supported packages ({kind === "world" ? "World" : "Avatar"})</span>
+				</label>
 				<SearchInput value={query} onChange={setQuery} placeholder="Search Packages..." />
 				<span className="label-inline">Selected Repos</span>
 				<Select label="Selected repositories" value={filter} onChange={setFilter} options={filterOptions} />

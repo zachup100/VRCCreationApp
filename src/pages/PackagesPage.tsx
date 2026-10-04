@@ -5,6 +5,7 @@ import type { CommunityRepository, RepositoriesInfo } from "../api";
 import { AddRepositoryModal } from "../components/AddRepositoryModal";
 import { Button, IconButton } from "../components/Button";
 import { Checkbox, ConfirmModal, Switch } from "../components/Controls";
+import { HiddenPackages } from "../components/HiddenPackages";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
 import { errorMessage } from "../format";
 
@@ -32,7 +33,7 @@ function PrereleaseSetting() {
 	);
 }
 
-function PackagesContent() {
+function PackagesContent({ onOpenHidden }: { onOpenHidden: () => void }) {
 	const { notify, repositoriesVersion } = useApp();
 	const [info, setInfo] = useState<RepositoriesInfo | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
@@ -119,6 +120,11 @@ function PackagesContent() {
 					</div>
 				))}
 			</div>
+			<div className="section-foot">
+				<Button icon="package" onClick={onOpenHidden}>
+					Hidden Packages
+				</Button>
+			</div>
 			{adding && (
 				<AddRepositoryModal
 					onClose={() => setAdding(false)}
@@ -152,12 +158,16 @@ function PackagesContent() {
 }
 
 export function PackagesPage() {
+	const [view, setView] = useState<"main" | "hidden">("main");
+	if (view === "hidden") {
+		return <HiddenPackages onClose={() => setView("main")} />;
+	}
 	return (
 		<div className="page">
 			<header className="page-header">
 				<h1>Packages</h1>
 			</header>
-			<PackagesContent />
+			<PackagesContent onOpenHidden={() => setView("hidden")} />
 		</div>
 	);
 }

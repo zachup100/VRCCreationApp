@@ -174,6 +174,10 @@ pub async fn project_packages(
         .settings()
         .show_prerelease;
     let hidden = hidden_ids(&prefs)?;
+    let hidden_packages = prefs
+        .lock()
+        .map_err(|_| "Preferences are unavailable".to_string())?
+        .hidden_package_set();
 
     let project = UnityProject::load(DefaultProjectIo::new(PathBuf::from(&path).into_boxed_path()))
         .await
@@ -204,7 +208,7 @@ pub async fn project_packages(
         .filter_map(|name| {
             let accumulator = names.remove(&name).unwrap_or_default();
             let installed_entry = installed.get(&name);
-            if installed_entry.is_none() && !accumulator.visible {
+            if installed_entry.is_none() && (!accumulator.visible || hidden_packages.contains(&name)) {
                 return None;
             }
 

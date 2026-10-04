@@ -316,6 +316,7 @@ export interface AvailablePackage {
 	source: PackageSource;
 	repository: string | null;
 	requiresSdk: PresetKind | null;
+	hidden: boolean;
 }
 
 export function listPresets(): Promise<Preset[]> {
@@ -359,4 +360,12 @@ export function duplicateProject(path: string, name: string, includeLibrary: boo
 
 export function refreshProjectInfo(): Promise<number> {
 	return invoke<number>("refresh_project_info");
+}
+
+export function setPackagesHidden(names: string[], hidden: boolean): Promise<void> {
+	return invoke<void>("set_packages_hidden", { names, hidden });
+}
+
+export function showAllPackages(): Promise<void> {
+	return invoke<void>("show_all_packages");
 }

@@ -56,3 +56,13 @@ export function loadLastLocation(): string {
 export function saveLastLocation(location: string) {
 	write(LOCATION_KEY, location);
 }
+
+const SUPPORTED_KEY = "onlySupportedPackages";
+
+export function loadOnlySupported(): boolean {
+	return read(SUPPORTED_KEY) === "true";
+}
+
+export function saveOnlySupported(value: boolean) {
+	write(SUPPORTED_KEY, String(value));
+}
