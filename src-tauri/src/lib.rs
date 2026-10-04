@@ -19,12 +19,14 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::unity::list_unity_editors,
-            commands::unity::open_unity_download_page,
+            commands::unity::open_external,
             commands::projects::list_projects,
             commands::projects::add_project,
             commands::projects::remove_project,
             commands::projects::set_project_favorite,
             commands::projects::import_from_vcc,
+            commands::projects::open_project,
+            commands::projects::open_project_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running application");

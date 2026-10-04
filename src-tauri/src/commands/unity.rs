@@ -1,7 +1,13 @@
 use serde::Serialize;
 use vrc_get_vpm::unity_hub;
 
-const UNITY_DOWNLOAD_URL: &str = "https://unity.com/download";
+const ALLOWED_HOSTS: &[&str] = &[
+    "unity.com",
+    "vcc.docs.vrchat.com",
+    "creators.vrchat.com",
+    "docs.vrchat.com",
+    "github.com",
+];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +41,13 @@ pub async fn list_unity_editors() -> Result<Vec<UnityEditorInfo>, String> {
 }
 
 #[tauri::command]
-pub fn open_unity_download_page() -> Result<(), String> {
-    open::that(UNITY_DOWNLOAD_URL).map_err(|error| error.to_string())
+pub fn open_external(url: String) -> Result<(), String> {
+    let rest = url
+        .strip_prefix("https://")
+        .ok_or_else(|| "Only https links can be opened".to_string())?;
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if !ALLOWED_HOSTS.contains(&host) {
+        return Err("This link is not on the allowed list".to_string());
+    }
+    open::that(&url).map_err(|error| error.to_string())
 }

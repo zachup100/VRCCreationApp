@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use tauri::State;
 use vrc_get_vpm::environment::VccDatabaseConnection;
 use vrc_get_vpm::io::{DefaultEnvironmentIo, DefaultProjectIo};
+use vrc_get_vpm::unity_hub;
 use vrc_get_vpm::{ProjectType, UnityProject};
 
 #[derive(Serialize)]
@@ -29,8 +30,10 @@ pub struct ImportResult {
 
 fn category_of(project_type: ProjectType) -> &'static str {
     match project_type {
-        ProjectType::LegacyAvatars | ProjectType::UpmAvatars | ProjectType::Avatars => "avatar",
-        ProjectType::LegacyWorlds | ProjectType::UpmWorlds | ProjectType::Worlds => "world",
+        ProjectType::LegacyAvatars => "legacy-avatar",
+        ProjectType::LegacyWorlds | ProjectType::LegacySdk2 => "legacy-world",
+        ProjectType::UpmAvatars | ProjectType::Avatars => "avatar",
+        ProjectType::UpmWorlds | ProjectType::Worlds => "world",
         _ => "other",
     }
 }
@@ -179,4 +182,54 @@ pub async fn import_from_vcc(
         imported,
         skipped: found - imported,
     })
+}
+
+#[tauri::command]
+pub async fn open_project(
+    path: String,
+    state: State<'_, Mutex<ProjectStore>>,
+) -> Result<(), String> {
+    let version = {
+        let store = lock(&state)?;
+        let project = store
+            .find(&path)
+            .ok_or_else(|| "This project is not in the list".to_string())?;
+        project
+            .unity_version
+            .clone()
+            .ok_or_else(|| "The Unity version of this project is unknown".to_string())?
+    };
+    if !Path::new(&path).is_dir() {
+        return Err("The project folder no longer exists".to_string());
+    }
+    let editors = unity_hub::load_unity_by_loading_unity_hub_files()
+        .await
+        .map_err(|error| error.to_string())?;
+    let editor = editors
+        .iter()
+        .find(|editor| editor.version.to_string() == version)
+        .ok_or_else(|| format!("Unity {version} is not installed"))?;
+    let executable = unity_hub::get_executable_path(&editor.path).into_owned();
+    std::process::Command::new(executable)
+        .arg("-projectPath")
+        .arg(&path)
+        .spawn()
+        .map_err(|error| format!("Could not start Unity: {error}"))?;
+    let mut store = lock(&state)?;
+    store.touch(&path);
+    store.save().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn open_project_folder(
+    path: String,
+    state: State<'_, Mutex<ProjectStore>>,
+) -> Result<(), String> {
+    {
+        let store = lock(&state)?;
+        if store.find(&path).is_none() {
+            return Err("This project is not in the list".to_string());
+        }
+    }
+    open::that(&path).map_err(|error| error.to_string())
 }

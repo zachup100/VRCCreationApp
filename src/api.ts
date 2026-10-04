@@ -6,11 +6,13 @@ export interface UnityEditorInfo {
 	architecture: string | null;
 }
 
+export type ProjectCategory = "avatar" | "world" | "legacy-avatar" | "legacy-world" | "other";
+
 export interface ProjectInfo {
 	path: string;
 	name: string;
 	unityVersion: string | null;
-	category: "avatar" | "world" | "other";
+	category: ProjectCategory;
 	favorite: boolean;
 	lastModified: number;
 	exists: boolean;
@@ -26,8 +28,16 @@ export function listUnityEditors(): Promise<UnityEditorInfo[]> {
 	return invoke<UnityEditorInfo[]>("list_unity_editors");
 }
 
-export function openUnityDownloadPage(): Promise<void> {
-	return invoke<void>("open_unity_download_page");
+export function openExternal(url: string): Promise<void> {
+	return invoke<void>("open_external", { url });
+}
+
+export function openProject(path: string): Promise<void> {
+	return invoke<void>("open_project", { path });
+}
+
+export function openProjectFolder(path: string): Promise<void> {
+	return invoke<void>("open_project_folder", { path });
 }
 
 export function listProjects(): Promise<ProjectInfo[]> {

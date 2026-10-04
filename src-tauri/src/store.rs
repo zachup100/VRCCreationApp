@@ -82,6 +82,26 @@ impl ProjectStore {
             .any(|project| path_key(&project.path) == key)
     }
 
+    pub fn find(&self, path: &str) -> Option<&StoredProject> {
+        let key = path_key(path);
+        self.data
+            .projects
+            .iter()
+            .find(|project| path_key(&project.path) == key)
+    }
+
+    pub fn touch(&mut self, path: &str) {
+        let key = path_key(path);
+        if let Some(project) = self
+            .data
+            .projects
+            .iter_mut()
+            .find(|project| path_key(&project.path) == key)
+        {
+            project.last_modified = now_millis();
+        }
+    }
+
     pub fn insert(&mut self, project: StoredProject) -> bool {
         if self.contains(&project.path) {
             return false;
