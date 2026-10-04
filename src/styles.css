@@ -17,12 +17,12 @@ body {
 	color: #ff7b7b;
 }
 
-.editors {
+.list {
 	list-style: none;
 	padding: 0;
 }
 
-.editors li {
+.list li {
 	padding: 0.5rem 0;
 	border-bottom: 1px solid #262a31;
 }
@@ -31,4 +31,50 @@ body {
 	font-size: 0.85rem;
 	opacity: 0.7;
 	word-break: break-all;
+}
+
+.info {
+	color: #7bd88f;
+}
+
+.toolbar {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.push {
+	margin-left: auto;
+}
+
+.icon {
+	background: none;
+	border: none;
+	color: inherit;
+	font-size: 1.1rem;
+	cursor: pointer;
+}
+
+.tag {
+	font-size: 0.75rem;
+	padding: 0.1rem 0.4rem;
+	border-radius: 4px;
+	background: #262a31;
+}
+
+.tag.warn {
+	background: #5a2a2a;
+}
+
+.missing {
+	opacity: 0.6;
+}
+
+section {
+	margin-bottom: 2rem;
 }
