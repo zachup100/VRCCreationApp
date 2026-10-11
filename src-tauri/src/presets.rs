@@ -98,12 +98,9 @@ impl PresetStore {
     }
 
     pub fn save(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.folder)?;
         let text = serde_json::to_string_pretty(&self.data)
             .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-        let temp = self.folder.join(format!("{FILE_NAME}.tmp"));
-        fs::write(&temp, text)?;
-        fs::rename(&temp, self.folder.join(FILE_NAME))
+        crate::store::atomic_write(&self.folder, FILE_NAME, &text)
     }
 }
 

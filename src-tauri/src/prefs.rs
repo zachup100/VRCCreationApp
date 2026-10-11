@@ -45,10 +45,16 @@ pub struct Prefs {
 impl Prefs {
     pub fn load(folder: PathBuf) -> Self {
         let file = folder.join(FILE_NAME);
-        let data = fs::read_to_string(&file)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default();
+        let data = match fs::read_to_string(&file) {
+            Ok(text) => match serde_json::from_str(&text) {
+                Ok(data) => data,
+                Err(_) => {
+                    let _ = fs::rename(&file, folder.join(format!("{FILE_NAME}.corrupt")));
+                    PrefsFile::default()
+                }
+            },
+            Err(_) => PrefsFile::default(),
+        };
         Self { folder, data }
     }
 
@@ -116,12 +122,9 @@ impl Prefs {
     }
 
     pub fn save(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.folder)?;
         let text = serde_json::to_string_pretty(&self.data)
             .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-        let temp = self.folder.join(format!("{FILE_NAME}.tmp"));
-        fs::write(&temp, text)?;
-        fs::rename(&temp, self.folder.join(FILE_NAME))
+        crate::store::atomic_write(&self.folder, FILE_NAME, &text)
     }
 }
 
@@ -137,6 +140,16 @@ mod tests {
         assert!(!prefs.settings().show_prerelease);
         assert!(prefs.settings().default_unity_args.is_empty());
         assert!(prefs.hidden().is_empty());
+    }
+
+    #[test]
+    fn an_empty_or_corrupt_file_is_set_aside() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("preferences.json"), "").unwrap();
+        let prefs = Prefs::load(dir.path().to_path_buf());
+        assert!(prefs.hidden().is_empty());
+        assert!(dir.path().join("preferences.json.corrupt").exists());
+        assert!(!dir.path().join("preferences.json").exists());
     }
 
     #[test]

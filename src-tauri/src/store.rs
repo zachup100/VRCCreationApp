@@ -47,6 +47,17 @@ pub fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
+pub fn atomic_write(folder: &std::path::Path, file_name: &str, text: &str) -> io::Result<()> {
+    use std::io::Write;
+    fs::create_dir_all(folder)?;
+    let temp = folder.join(format!("{file_name}.tmp"));
+    let mut file = fs::File::create(&temp)?;
+    file.write_all(text.as_bytes())?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&temp, folder.join(file_name))
+}
+
 pub fn path_key(path: &str) -> String {
     let trimmed = path.trim_end_matches(['/', '\\']);
     if cfg!(windows) {
@@ -181,12 +192,9 @@ impl ProjectStore {
     }
 
     pub fn save(&self) -> io::Result<()> {
-        fs::create_dir_all(&self.folder)?;
         let text = serde_json::to_string_pretty(&self.data)
             .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-        let temp = self.folder.join(format!("{FILE_NAME}.tmp"));
-        fs::write(&temp, text)?;
-        fs::rename(&temp, self.folder.join(FILE_NAME))
+        atomic_write(&self.folder, FILE_NAME, &text)
     }
 }
 
@@ -250,6 +258,15 @@ mod tests {
         assert_eq!(store.find("/p/two").unwrap().unity_version.as_deref(), Some("2019.4.31f1"));
         assert_eq!(store.find("/p/two").unwrap().category, "avatar");
         assert_eq!(store.find("/p/one").unwrap().category, "world");
+    }
+
+    #[test]
+    fn atomic_write_replaces_the_file_and_leaves_no_temp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        atomic_write(dir.path(), "a.json", "one").unwrap();
+        atomic_write(dir.path(), "a.json", "two").unwrap();
+        assert_eq!(std::fs::read_to_string(dir.path().join("a.json")).unwrap(), "two");
+        assert!(!dir.path().join("a.json.tmp").exists());
     }
 
     #[test]
