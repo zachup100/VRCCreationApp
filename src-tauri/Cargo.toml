@@ -1,6 +1,6 @@
 [package]
 name = "vrccreationapp"
-version = "0.1.0"
+version = "1.0.0"
 description = "Open-source manager for VRChat projects and VPM packages"
 authors = ["zachLabs"]
 edition = "2021"

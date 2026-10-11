@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 1.0.0 (unreleased)
 
 First release. Windows 10 and 11 only.
 
@@ -20,6 +20,12 @@ First release. Windows 10 and 11 only.
 - Presets: saved package lists for World or Avatar projects that can be picked when creating a project.
 - Edit a community repository's URL and authentication headers.
 - Optional support for the Add to VCC buttons on websites: Settings has a Register Deep Link button that makes the app handle vcc:// links by opening the Add Repository window with the link prefilled. It is off until you register it.
+
+### Unity
+- A Unity page lists installed editors, lets you add one by hand, and installs the recommended VRChat editors (2022.3.22f1 and 2019.4.31f1) through Unity Hub, with optional Android and iOS support and a progress bar.
+- On Windows it can also download and install Unity Hub after a confirmation. The installer is checked against Unity's published checksum and signature before it runs, and Windows asks for permission first.
+- An editor download can be limited to a chosen speed (Unlimited, 1, 2, 4, 8, 16, 24 or 32 MB/s) from the install dialog or Settings.
+- While an install runs, projects cannot be opened or changed.
 
 ### App
 - Dark, OLED, light and system themes.
