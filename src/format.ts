@@ -24,6 +24,12 @@ export function errorMessage(error: unknown): string {
 	return typeof error === "string" ? error : error instanceof Error ? error.message : String(error);
 }
 
+const SENSITIVE_HEADER = /auth|cookie|token|secret|pass|key|credential|session|signature|bearer/i;
+
+export function isSensitiveHeader(name: string): boolean {
+	return SENSITIVE_HEADER.test(name);
+}
+
 export function formatBytes(bytes: number): string {
 	if (bytes < 1024 * 1024) {
 		return `${Math.max(1, Math.round(bytes / 1024))} KB`;

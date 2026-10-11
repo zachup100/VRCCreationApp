@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorMessage, formatBytes, timeAgo } from "./format";
+import { errorMessage, formatBytes, isSensitiveHeader, timeAgo } from "./format";
 
 const NOW = Date.UTC(2026, 9, 3, 12, 0, 0);
 const MINUTE = 60 * 1000;
@@ -54,5 +54,19 @@ describe("errorMessage", () => {
 	it("falls back to a string for anything else", () => {
 		expect(errorMessage(42)).toBe("42");
 		expect(errorMessage({ toString: () => "custom" })).toBe("custom");
+	});
+});
+
+describe("isSensitiveHeader", () => {
+	it("flags credential style header names", () => {
+		for (const name of ["Authorization", "Cookie", "X-Api-Key", "X-Auth-Token", "Proxy-Authorization", "X-Password", "client_secret"]) {
+			expect(isSensitiveHeader(name)).toBe(true);
+		}
+	});
+
+	it("leaves ordinary header names visible", () => {
+		for (const name of ["Accept", "User-Agent", "X-Tenant", "Accept-Language", ""]) {
+			expect(isSensitiveHeader(name)).toBe(false);
+		}
 	});
 });

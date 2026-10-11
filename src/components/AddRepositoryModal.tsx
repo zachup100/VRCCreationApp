@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { repositoryAdd, repositoryHeaders, repositoryPreview, repositoryUpdate } from "../api";
 import type { CommunityRepository, HeaderInput, RepositoryPreview } from "../api";
-import { errorMessage } from "../format";
+import { errorMessage, isSensitiveHeader } from "../format";
 import { Button } from "./Button";
 import { Modal, Switch, TextField } from "./Controls";
 import { Icon } from "./Icons";
@@ -39,12 +39,6 @@ export function AddRepositoryModal({
 		initial && initial.headers.length > 0 ? initial.headers : [{ name: "", value: "" }],
 	);
 	const [adding, setAdding] = useState(false);
-
-	useEffect(() => {
-		if (initial) {
-			void check();
-		}
-	}, []);
 
 	useEffect(() => {
 		if (!editing) {
@@ -154,6 +148,11 @@ export function AddRepositoryModal({
 					}
 				}}
 			>
+				{initial && !editing && (
+					<div className="notice warn">
+						This repository was opened from a link. Nothing has been requested yet. Review the address and headers below, then choose Check Repository.
+					</div>
+				)}
 				<TextField
 					label="Repository URL"
 					value={url}
@@ -188,7 +187,7 @@ export function AddRepositoryModal({
 									onChange={(event) => changeHeaders(headers.map((item, at) => (at === index ? { ...item, name: event.target.value } : item)))}
 								/>
 								<input
-									type="password"
+									type={isSensitiveHeader(header.name) ? "password" : "text"}
 									value={header.value}
 									placeholder="Value"
 									aria-label="Header value"

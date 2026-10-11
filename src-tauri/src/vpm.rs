@@ -1,5 +1,7 @@
+use crate::hosts;
 use crate::limits::LimitedHttp;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
@@ -13,6 +15,7 @@ pub const LOCAL_USER_ID: &str = "local-user-packages";
 pub struct VpmContext {
     pub io: DefaultEnvironmentIo,
     pub http: reqwest::Client,
+    pub block_private_hosts: Arc<AtomicBool>,
     pub lock: Mutex<()>,
     pub ops: Mutex<()>,
     collection: Mutex<Option<Arc<PackageCollection>>>,
@@ -21,7 +24,18 @@ pub struct VpmContext {
 impl VpmContext {
     pub fn new(folder: PathBuf) -> Result<Self, String> {
         std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
+        let block_private_hosts = Arc::new(AtomicBool::new(true));
+        let redirect_flag = block_private_hosts.clone();
         let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                if redirect_flag.load(Ordering::Relaxed) && hosts::is_private_url(attempt.url()) {
+                    attempt.error(hosts::BLOCKED_MESSAGE)
+                } else if attempt.previous().len() >= 10 {
+                    attempt.error("Too many redirects")
+                } else {
+                    attempt.follow()
+                }
+            }))
             .user_agent(concat!("VRCCreationApp/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(15))
             .read_timeout(Duration::from_secs(60))
@@ -30,10 +44,15 @@ impl VpmContext {
         Ok(Self {
             io: DefaultEnvironmentIo::new(folder.into_boxed_path()),
             http,
+            block_private_hosts,
             lock: Mutex::new(()),
             ops: Mutex::new(()),
             collection: Mutex::new(None),
         })
+    }
+
+    pub fn private_hosts_blocked(&self) -> bool {
+        self.block_private_hosts.load(Ordering::Relaxed)
     }
 
     pub fn try_busy(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {

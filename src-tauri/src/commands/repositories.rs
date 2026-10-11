@@ -1,4 +1,5 @@
 use crate::applog::log;
+use crate::hosts::ensure_allowed;
 use crate::limits::{read_capped, LimitedHttp, REPOSITORY_TIMEOUT};
 use crate::prefs::Prefs;
 use crate::vpm::{VpmContext, CURATED_ID, LOCAL_USER_ID, OFFICIAL_ID};
@@ -238,6 +239,9 @@ pub async fn repository_preview(
         Ok(map) => map,
         Err(message) => return Ok(RepositoryPreview::DownloadError { message }),
     };
+    if let Err(message) = ensure_allowed(&parsed, vpm.private_hosts_blocked()).await {
+        return Ok(RepositoryPreview::DownloadError { message });
+    }
     let mut request = vpm.http.get(parsed.clone()).timeout(REPOSITORY_TIMEOUT);
     for (name, value) in &header_values {
         request = request.header(name.as_ref(), value.as_ref());
@@ -324,6 +328,7 @@ pub async fn repository_add(
     vpm: State<'_, VpmContext>,
 ) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
+    ensure_allowed(&parsed, vpm.private_hosts_blocked()).await?;
     let parsed_label = parsed.to_string();
     let _busy = vpm.try_busy()?;
     let _guard = vpm.lock.lock().await;
@@ -384,6 +389,7 @@ pub async fn repository_update(
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
+    ensure_allowed(&parsed, vpm.private_hosts_blocked()).await?;
     let parsed_label = parsed.to_string();
     let header_values = header_map(&headers)?;
     let _busy = vpm.try_busy()?;
@@ -560,19 +566,23 @@ pub async fn import_packages_from_vcc(
             .unwrap_or_else(|| candidate.path.display().to_string());
         match candidate.url {
             Some(url) => {
-                let outcome = add_remote_repo(
-                    &mut settings,
-                    url,
-                    candidate.name.as_deref(),
-                    candidate.headers,
-                    &vpm.io,
-                    &LimitedHttp::new(&vpm.http),
-                )
-                .await;
-                match outcome {
-                    Ok(()) => result.repositories_added += 1,
-                    Err(AddRepositoryErr::AlreadyAdded) => result.repositories_skipped += 1,
-                    Err(error) => result.failures.push(format!("{label}: {error}")),
+                if let Err(message) = ensure_allowed(&url, vpm.private_hosts_blocked()).await {
+                    result.failures.push(format!("{label}: {message}"));
+                } else {
+                    let outcome = add_remote_repo(
+                        &mut settings,
+                        url,
+                        candidate.name.as_deref(),
+                        candidate.headers,
+                        &vpm.io,
+                        &LimitedHttp::new(&vpm.http),
+                    )
+                    .await;
+                    match outcome {
+                        Ok(()) => result.repositories_added += 1,
+                        Err(AddRepositoryErr::AlreadyAdded) => result.repositories_skipped += 1,
+                        Err(error) => result.failures.push(format!("{label}: {error}")),
+                    }
                 }
             }
             None => {

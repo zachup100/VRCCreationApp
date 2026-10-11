@@ -4,6 +4,7 @@ mod commands;
 mod deeplink;
 mod download;
 mod editors;
+mod hosts;
 mod limits;
 mod manifest;
 mod prefs;
@@ -81,6 +82,8 @@ pub fn run() {
             commands::migrate::open_backup_folder,
             commands::settings::get_settings,
             commands::settings::update_settings,
+            commands::settings::get_private_host_blocking,
+            commands::settings::set_private_host_blocking,
             commands::packages::project_packages,
             commands::about::get_licenses,
             applog::get_logs,

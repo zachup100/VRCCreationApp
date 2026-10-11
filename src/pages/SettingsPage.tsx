@@ -3,11 +3,19 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useApp } from "../AppContext";
-import { addCustomEditor, deepLinkRegister, deepLinkStatus, deepLinkUnregister, removeCustomEditor } from "../api";
+import {
+	addCustomEditor,
+	deepLinkRegister,
+	deepLinkStatus,
+	deepLinkUnregister,
+	getPrivateHostBlocking,
+	removeCustomEditor,
+	setPrivateHostBlocking,
+} from "../api";
 import type { DeepLinkStatus } from "../api";
 import { useActions } from "../actions";
 import { Button, IconButton } from "../components/Button";
-import { ConfirmModal, EmptyState, Select, Tabs } from "../components/Controls";
+import { ConfirmModal, EmptyState, Select, Switch, Tabs } from "../components/Controls";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
 import { LicensesModal } from "../components/LicensesModal";
 import type { Tab } from "../components/Controls";
@@ -247,6 +255,35 @@ function DeepLinkRow() {
 	);
 }
 
+function PrivateHostsRow() {
+	const { notify } = useApp();
+	const [enabled, setEnabled] = useState<boolean | null>(null);
+
+	useEffect(() => {
+		getPrivateHostBlocking()
+			.then(setEnabled)
+			.catch((error) => notify("error", errorMessage(error)));
+	}, [notify]);
+
+	const change = async (value: boolean) => {
+		try {
+			setEnabled(await setPrivateHostBlocking(value));
+		} catch (error) {
+			notify("error", errorMessage(error));
+		}
+	};
+
+	return (
+		<SettingRow
+			icon="world"
+			title="Block Private Addresses"
+			description="Refuse repository addresses that point to this computer or a local network, such as localhost, 192.168.x.x or 169.254.x.x. Turning this off only lasts until you close the app, and it is on again the next time it starts."
+		>
+			<Switch label="Block private addresses" checked={enabled ?? true} disabled={enabled === null} onChange={(value) => void change(value)} />
+		</SettingRow>
+	);
+}
+
 function GeneralTab() {
 	const { editors, editorsLoading, editorsError, refreshEditors, projects, notify } = useApp();
 	const actions = useActions();
@@ -397,6 +434,7 @@ function GeneralTab() {
 						<ImportPackagesButton />
 					</SettingRow>
 					<DeepLinkRow />
+					<PrivateHostsRow />
 				</div>
 			</section>
 			<AboutSection />

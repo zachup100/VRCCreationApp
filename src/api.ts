@@ -160,6 +160,14 @@ export function deepLinkTakeAddRepository(): Promise<IncomingRepository | null> 
 	return invoke<IncomingRepository | null>("deep_link_take_add_repository");
 }
 
+export function getPrivateHostBlocking(): Promise<boolean> {
+	return invoke<boolean>("get_private_host_blocking");
+}
+
+export function setPrivateHostBlocking(enabled: boolean): Promise<boolean> {
+	return invoke<boolean>("set_private_host_blocking", { enabled });
+}
+
 export function repositorySetHidden(id: string, hidden: boolean): Promise<void> {
 	return invoke<void>("repository_set_hidden", { id, hidden });
 }

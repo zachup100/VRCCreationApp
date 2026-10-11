@@ -5135,6 +5135,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tempfile",
  "tokio",
+ "url",
  "uuid",
  "vrc-get-vpm",
  "winreg 0.56.0",

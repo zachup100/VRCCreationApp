@@ -106,3 +106,14 @@ mod tests {
         assert_eq!(stored, dir.path().to_string_lossy());
     }
 }
+#[tauri::command]
+pub fn get_private_host_blocking(vpm: State<'_, VpmContext>) -> bool {
+    vpm.private_hosts_blocked()
+}
+
+#[tauri::command]
+pub fn set_private_host_blocking(enabled: bool, vpm: State<'_, VpmContext>) -> bool {
+    vpm.block_private_hosts
+        .store(enabled, std::sync::atomic::Ordering::Relaxed);
+    enabled
+}
