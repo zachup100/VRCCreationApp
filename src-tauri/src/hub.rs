@@ -9,6 +9,8 @@ use reqwest::Url;
 use serde::Serialize;
 use sha2::{Digest, Sha512};
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -199,6 +201,41 @@ impl Progress {
     }
 }
 
+pub fn system_tool(relative: &str) -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let root = std::env::var_os("SystemRoot").or_else(|| std::env::var_os("windir"))?;
+    Some(PathBuf::from(root).join("System32").join(relative))
+}
+
+#[cfg(unix)]
+fn kill_tree(child: &mut std::process::Child) {
+    let group = format!("-{}", child.id());
+    let _ = Command::new("kill")
+        .args(["-KILL", "--", &group])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+#[cfg(windows)]
+fn kill_tree(child: &mut std::process::Child) {
+    if let Some(tool) = system_tool("taskkill.exe") {
+        let mut command = Command::new(tool);
+        command
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        hide_window(&mut command);
+        let _ = command.status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 pub enum RunEnd {
     Exited(Option<i32>),
     Cancelled,
@@ -215,6 +252,8 @@ pub fn run_streaming(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(unix)]
+    command.process_group(0);
     let mut child = command.spawn()?;
     let (sender, receiver) = mpsc::channel::<String>();
     if let Some(stdout) = child.stdout.take() {
@@ -250,13 +289,11 @@ pub fn run_streaming(
             }
         }
         if cancel.map(|flag| flag.load(Ordering::SeqCst)).unwrap_or(false) {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_tree(&mut child);
             return Ok(RunEnd::Cancelled);
         }
         if started.elapsed() > limit {
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_tree(&mut child);
             return Ok(RunEnd::TimedOut);
         }
         if let Some(status) = child.try_wait()? {
@@ -372,6 +409,23 @@ pub struct Session {
     pub cancel: Arc<AtomicBool>,
     kind: &'static str,
     pub version: String,
+    finished: bool,
+}
+
+fn outcome_text(kind: &str, version: &str, result: &Result<(), Stop>) -> (&'static str, String, &'static str) {
+    match result {
+        Ok(()) => (
+            "finished",
+            if kind == "hub" {
+                "Unity Hub is installed".to_string()
+            } else {
+                format!("Unity {version} is installed")
+            },
+            "info",
+        ),
+        Err(Stop::Cancelled) => ("cancelled", "The install was cancelled".to_string(), "info"),
+        Err(Stop::Failed(message)) => ("failed", message.clone(), "warning"),
+    }
 }
 
 impl Session {
@@ -393,6 +447,7 @@ impl Session {
             cancel,
             kind,
             version: version.to_string(),
+            finished: false,
         };
         session.emit("starting", 0, 0, "");
         Ok(session)
@@ -424,21 +479,13 @@ impl Session {
         }
     }
 
-    pub fn end(mut self, result: Result<(), Stop>) {
+    fn finish(&mut self, result: &Result<(), Stop>) {
+        if self.finished {
+            return;
+        }
+        self.finished = true;
         self.release();
-        let (phase, message, level) = match result {
-            Ok(()) => (
-                "finished",
-                if self.kind == "hub" {
-                    "Unity Hub is installed".to_string()
-                } else {
-                    format!("Unity {} is installed", self.version)
-                },
-                "info",
-            ),
-            Err(Stop::Cancelled) => ("cancelled", "The install was cancelled".to_string(), "info"),
-            Err(Stop::Failed(message)) => ("failed", message, "warning"),
-        };
+        let (phase, message, level) = outcome_text(self.kind, &self.version, result);
         log(&self.app, level, message.clone());
         let _ = self.app.emit(
             EVENT,
@@ -453,11 +500,15 @@ impl Session {
             },
         );
     }
+
+    pub fn end(mut self, result: Result<(), Stop>) {
+        self.finish(&result);
+    }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.release();
+        self.finish(&Err(Stop::Failed("The install stopped unexpectedly".to_string())));
     }
 }
 
@@ -748,20 +799,22 @@ fn hide_window(command: &mut Command) {
 #[cfg(not(windows))]
 fn hide_window(_command: &mut Command) {}
 
-fn powershell(script: &str, file: &Path) -> Command {
-    let mut command = Command::new("powershell.exe");
+fn powershell(script: &str, file: &Path) -> Result<Command, Stop> {
+    let tool = system_tool("WindowsPowerShell\\v1.0\\powershell.exe")
+        .ok_or("The Windows system folder was not found")?;
+    let mut command = Command::new(tool);
     command
         .args(["-NoProfile", "-NonInteractive", "-Command", script])
         .env("VRCC_FILE", file);
     hide_window(&mut command);
-    command
+    Ok(command)
 }
 
 fn verify_signature(file: &Path) -> Result<(), Stop> {
     if !cfg!(windows) {
         return Err("Installing Unity Hub is only supported on Windows".into());
     }
-    match run_streaming(powershell(SIGNATURE_SCRIPT, file), None, SIGNATURE_LIMIT, |_| {}) {
+    match run_streaming(powershell(SIGNATURE_SCRIPT, file)?, None, SIGNATURE_LIMIT, |_| {}) {
         Ok(RunEnd::Exited(Some(0))) => Ok(()),
         Ok(RunEnd::Exited(_)) => Err("The Unity Hub installer is not signed by Unity Technologies and was not run".into()),
         Ok(_) => Err("The signature check took too long, so the installer was not run".into()),
@@ -773,7 +826,7 @@ fn run_setup(file: &Path) -> Result<i32, Stop> {
     if !cfg!(windows) {
         return Err("Installing Unity Hub is only supported on Windows".into());
     }
-    match run_streaming(powershell(SETUP_SCRIPT, file), None, SETUP_LIMIT, |_| {}) {
+    match run_streaming(powershell(SETUP_SCRIPT, file)?, None, SETUP_LIMIT, |_| {}) {
         Ok(RunEnd::Exited(Some(code))) => Ok(code),
         Ok(RunEnd::Exited(None)) => Err("The Unity Hub installer ended unexpectedly".into()),
         Ok(_) => Err("The Unity Hub installer took too long".into()),
@@ -936,6 +989,83 @@ mod tests {
         let end = run_streaming(shell("sleep 30"), Some(&flag), Duration::from_secs(60), |_| {}).unwrap();
         assert!(matches!(end, RunEnd::Cancelled));
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[cfg(unix)]
+    fn process_alive(pid: &str) -> bool {
+        Command::new("kill")
+            .args(["-0", pid])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancelling_stops_the_programs_a_run_started_too() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let setter = flag.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(600));
+            setter.store(true, Ordering::SeqCst);
+        });
+        let mut pid = String::new();
+        let end = run_streaming(shell("sleep 60 & echo $!; wait"), Some(&flag), Duration::from_secs(60), |line| {
+            pid = line.trim().to_string()
+        })
+        .unwrap();
+        assert!(matches!(end, RunEnd::Cancelled));
+        assert!(!pid.is_empty());
+        let mut gone = false;
+        for _ in 0..30 {
+            if !process_alive(&pid) {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(gone, "process {pid} is still running");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_time_limit_stops_the_programs_a_run_started_too() {
+        let mut pid = String::new();
+        let end = run_streaming(shell("sleep 60 & echo $!; wait"), None, Duration::from_millis(600), |line| {
+            pid = line.trim().to_string()
+        })
+        .unwrap();
+        assert!(matches!(end, RunEnd::TimedOut));
+        let mut gone = false;
+        for _ in 0..30 {
+            if !process_alive(&pid) {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(gone, "process {pid} is still running");
+    }
+
+    #[test]
+    fn outcomes_are_described_for_every_ending() {
+        assert_eq!(outcome_text("editor", "2022.3.22f1", &Ok(())).1, "Unity 2022.3.22f1 is installed");
+        assert_eq!(outcome_text("hub", "", &Ok(())).1, "Unity Hub is installed");
+        assert_eq!(outcome_text("hub", "", &Err(Stop::Cancelled)).0, "cancelled");
+        let failed = outcome_text("editor", "x", &Err(Stop::Failed("It broke".to_string())));
+        assert_eq!((failed.0, failed.1.as_str(), failed.2), ("failed", "It broke", "warning"));
+    }
+
+    #[test]
+    fn system_tools_come_from_the_windows_folder_only() {
+        let found = system_tool("taskkill.exe");
+        if cfg!(windows) {
+            assert!(found.unwrap().ends_with("System32\\taskkill.exe"));
+        } else {
+            assert!(found.is_none());
+        }
     }
 
     #[cfg(unix)]
