@@ -4,6 +4,8 @@ An open-source desktop app, published by zachLabs, for managing VRChat Unity pro
 
 It is not made or endorsed by VRChat. VRChat and its logos belong to VRChat Inc. This app uses its own name, icon and artwork.
 
+See [DIFFERENCE.md](DIFFERENCE.md) for how it differs from the Creator Companion.
+
 ## Features
 
 - Create projects from World and Avatar templates, optionally with a preset of packages.
