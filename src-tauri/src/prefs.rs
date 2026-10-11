@@ -42,6 +42,15 @@ pub struct Prefs {
     data: PrefsFile,
 }
 
+fn restore_drive_root(value: String) -> String {
+    let bytes = value.as_bytes();
+    if bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        format!("{value}\\")
+    } else {
+        value
+    }
+}
+
 impl Prefs {
     pub fn load(folder: PathBuf) -> Self {
         let file = folder.join(FILE_NAME);
@@ -55,6 +64,9 @@ impl Prefs {
             },
             Err(_) => PrefsFile::default(),
         };
+        let mut data = data;
+        data.settings.default_project_location = data.settings.default_project_location.take().map(restore_drive_root);
+        data.settings.backup_location = data.settings.backup_location.take().map(restore_drive_root);
         Self { folder, data }
     }
 
@@ -140,6 +152,18 @@ mod tests {
         assert!(!prefs.settings().show_prerelease);
         assert!(prefs.settings().default_unity_args.is_empty());
         assert!(prefs.hidden().is_empty());
+    }
+
+    #[test]
+    fn a_bare_drive_letter_saved_by_older_versions_gets_its_separator_back() {
+        assert_eq!(restore_drive_root("D:".to_string()), "D:\\");
+        assert_eq!(restore_drive_root("D:\\".to_string()), "D:\\");
+        assert_eq!(restore_drive_root("D:\\Backups".to_string()), "D:\\Backups");
+        assert_eq!(restore_drive_root("/home/me".to_string()), "/home/me");
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("preferences.json"), r#"{"backupLocation":"E:"}"#).unwrap();
+        let prefs = Prefs::load(dir.path().to_path_buf());
+        assert_eq!(prefs.settings().backup_location.as_deref(), Some("E:\\"));
     }
 
     #[test]

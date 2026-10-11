@@ -1,5 +1,6 @@
 use crate::args::split_args;
 use crate::prefs::{AppSettings, Prefs};
+use crate::store::path_key;
 use crate::vpm::VpmContext;
 use serde::Deserialize;
 use std::path::Path;
@@ -15,7 +16,19 @@ pub struct SettingsPatch {
     default_unity_args: Option<String>,
 }
 
+fn system_root() -> String {
+    if cfg!(windows) {
+        std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string())
+    } else {
+        "/".to_string()
+    }
+}
+
 fn folder_setting(value: &str, label: &str) -> Result<Option<String>, String> {
+    folder_setting_for(value, label, &system_root())
+}
+
+fn folder_setting_for(value: &str, label: &str, system: &str) -> Result<Option<String>, String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Ok(None);
@@ -24,7 +37,16 @@ fn folder_setting(value: &str, label: &str) -> Result<Option<String>, String> {
     if !path.is_absolute() || !path.is_dir() {
         return Err(format!("The {label} must be an existing folder"));
     }
-    Ok(Some(trimmed.trim_end_matches(['/', '\\']).to_string()))
+    let base = trimmed.trim_end_matches(['/', '\\']);
+    if path.parent().is_none() {
+        if path_key(base) == path_key(system) {
+            return Err(format!(
+                "The {label} cannot be the root of the drive Windows is installed on. Choose a folder inside it."
+            ));
+        }
+        return Ok(Some(format!("{base}{}", std::path::MAIN_SEPARATOR)));
+    }
+    Ok(Some(base.to_string()))
 }
 
 #[tauri::command]
@@ -96,6 +118,21 @@ mod tests {
         let file = dir.path().join("file.txt");
         std::fs::write(&file, "x").unwrap();
         assert!(folder_setting(&file.to_string_lossy(), "folder").is_err());
+    }
+
+    #[test]
+    fn a_filesystem_root_keeps_its_separator_unless_it_is_the_system_root() {
+        let root = if cfg!(windows) { "D:\\" } else { "/" };
+        if cfg!(windows) && !Path::new(root).is_dir() {
+            return;
+        }
+        let kept = folder_setting_for(root, "folder", "Z:").unwrap().unwrap();
+        assert_eq!(kept, root);
+        let system = if cfg!(windows) { "D:" } else { "/" };
+        let refused = folder_setting_for(root, "folder", system).unwrap_err();
+        assert!(refused.contains("root of the drive Windows is installed on"));
+        let child = tempfile::tempdir().unwrap();
+        assert!(folder_setting_for(&child.path().to_string_lossy(), "folder", system).is_ok());
     }
 
     #[test]
