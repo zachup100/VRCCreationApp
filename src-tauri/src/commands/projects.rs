@@ -32,6 +32,11 @@ pub struct ImportResult {
     skipped: usize,
 }
 
+fn is_importable_path(path: &str) -> bool {
+    let path = Path::new(path);
+    path.is_absolute() && !path.is_file()
+}
+
 pub(crate) fn vpm_category(has_avatars: bool, has_worlds: bool, direct_avatars: bool, direct_worlds: bool) -> Option<&'static str> {
     match (has_avatars, has_worlds) {
         (true, false) => Some("avatar"),
@@ -258,8 +263,13 @@ pub async fn import_from_vcc(
     let found = candidates.len();
     let mut store = lock(&state)?;
     let mut imported = 0;
+    let mut invalid = 0;
     let mut seen = std::collections::HashSet::new();
     for candidate in candidates {
+        if !is_importable_path(&candidate.path) {
+            invalid += 1;
+            continue;
+        }
         if seen.insert(path_key(&candidate.path)) && store.insert(candidate) {
             imported += 1;
         }
@@ -267,7 +277,10 @@ pub async fn import_from_vcc(
     if imported > 0 {
         store.save().map_err(|error| error.to_string())?;
     }
-    log(&app, "success", format!("Imported projects from VCC: {imported} added, {} already in the list", found - imported));
+    log(&app, "success", format!("Imported projects from VCC: {imported} added, {} already in the list", found - imported - invalid));
+    if invalid > 0 {
+        log(&app, "warning", format!("Skipped {invalid} VCC entries that were not valid folder paths"));
+    }
     Ok(ImportResult {
         found,
         imported,
@@ -365,6 +378,9 @@ pub async fn open_project_folder(
             return Err("This project is not in the list".to_string());
         }
     }
+    if !Path::new(&path).is_dir() {
+        return Err("This project's folder no longer exists".to_string());
+    }
     tokio::task::spawn_blocking(move || open::that_detached(path))
         .await
         .map_err(|_| "Could not open the folder".to_string())?
@@ -412,6 +428,21 @@ pub async fn refresh_project_info(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imported_paths_must_be_absolute_and_not_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("Proj");
+        std::fs::create_dir_all(&folder).unwrap();
+        let file = dir.path().join("evil.exe");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(is_importable_path(folder.to_str().unwrap()));
+        assert!(is_importable_path(dir.path().join("Missing").to_str().unwrap()));
+        assert!(!is_importable_path(file.to_str().unwrap()));
+        assert!(!is_importable_path("https://example.com/x"));
+        assert!(!is_importable_path("relative/Proj"));
+        assert!(!is_importable_path(""));
+    }
 
     #[test]
     fn only_real_unity_project_folders_can_be_deleted() {
