@@ -289,6 +289,7 @@ function GeneralTab() {
 	const actions = useActions();
 	const [editorsOpen, setEditorsOpen] = useState(false);
 	const [addingEditor, setAddingEditor] = useState(false);
+	const [pendingEditor, setPendingEditor] = useState<string | null>(null);
 
 	const addEditor = async () => {
 		const isWindows = navigator.userAgent.includes("Windows");
@@ -307,6 +308,10 @@ function GeneralTab() {
 		if (typeof selected !== "string") {
 			return;
 		}
+		setPendingEditor(selected);
+	};
+
+	const confirmAddEditor = async (selected: string) => {
 		setAddingEditor(true);
 		try {
 			const added = await addCustomEditor(selected);
@@ -344,7 +349,7 @@ function GeneralTab() {
 							<span className="collapse-title">Unity Editors</span>
 							<span className="muted">
 								{editorsOpen
-									? "Editors found through Unity Hub and its install folders, plus any you add yourself."
+									? "Editors found through Unity Hub and its install folders, plus any you add yourself. Adding an editor may run it once to read its version."
 									: editorsLoading
 										? "Looking for editors..."
 										: `${editors.length} ${editors.length === 1 ? "editor" : "editors"} found`}
@@ -418,6 +423,17 @@ function GeneralTab() {
 				</div>
 				)}
 			</section>
+			{pendingEditor && (
+				<ConfirmModal
+					title="Add Unity Editor"
+					confirmLabel="Add Editor"
+					onClose={() => setPendingEditor(null)}
+					onConfirm={() => void confirmAddEditor(pendingEditor)}
+				>
+					<div className="kv-value">{pendingEditor}</div>
+					<p>To read its version, this app may run this program once. Only add Unity editors that you trust.</p>
+				</ConfirmModal>
+			)}
 			<ProjectSettings />
 			<section className="settings-section">
 				<div>
