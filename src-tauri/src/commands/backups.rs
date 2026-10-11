@@ -329,18 +329,23 @@ pub async fn restore_backup(
     };
     validate_name(&project_name)?;
     let target = parent.join(&project_name);
-    match tokio::fs::create_dir(&target).await {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            return Ok(RestoreOutcome::Conflict { name: project_name });
-        }
-        Err(error) => return Err(format!("Could not create the project folder: {error}")),
+    if target.symlink_metadata().is_ok() {
+        return Ok(RestoreOutcome::Conflict { name: project_name });
     }
+    let staging = parent.join(format!(".{project_name}.restoring"));
+    if staging.symlink_metadata().is_ok() {
+        tokio::fs::remove_dir_all(&staging)
+            .await
+            .map_err(|error| format!("Could not clear an unfinished restore: {error}"))?;
+    }
+    tokio::fs::create_dir(&staging)
+        .await
+        .map_err(|error| format!("Could not create the project folder: {error}"))?;
 
     let extraction = {
         let handle = app.clone();
         let source = zip_path.clone();
-        let destination = target.clone();
+        let destination = staging.clone();
         tokio::task::spawn_blocking(move || {
             let mut report = |done: usize, total: usize| emit(&handle, TaskProgress::Restore { done, total });
             extract_backup(&source, &destination, &mut report)
@@ -350,8 +355,16 @@ pub async fn restore_backup(
             .and_then(|result| result)
     };
     if let Err(message) = extraction {
-        let _ = tokio::fs::remove_dir_all(&target).await;
+        let _ = tokio::fs::remove_dir_all(&staging).await;
         return Err(message);
+    }
+    if target.symlink_metadata().is_ok() {
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+        return Ok(RestoreOutcome::Conflict { name: project_name });
+    }
+    if let Err(error) = tokio::fs::rename(&staging, &target).await {
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+        return Err(format!("Could not finish the restore: {error}"));
     }
 
     let (unity_version, category) =
