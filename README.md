@@ -24,7 +24,7 @@ The app needs the Microsoft WebView2 Runtime, which is already part of current W
 
 The files are not code signed yet, so Windows SmartScreen may warn you the first time. Each release includes a `SHA256SUMS.txt` file so you can check your download.
 
-Unity is not bundled. Install Unity Hub and the Unity version your projects use (2022.3.22f1 for current VRChat projects). The app finds editors that Unity Hub installed. The Unity page can also install the recommended editors (2022.3.22f1 and 2019.4.31f1, with optional Android build support) through Unity Hub, and on Windows it can download and install Unity Hub itself after you confirm. The installer is checked against Unity's published checksum and signature before it runs, and Windows asks for permission first. While an install runs, projects cannot be opened or changed.
+Unity is not bundled. Install Unity Hub and the Unity version your projects use (2022.3.22f1 for current VRChat projects). The app finds editors that Unity Hub installed. The Unity page can also install the recommended editors (2022.3.22f1 and 2019.4.31f1, with optional Android and iOS support) through Unity Hub, and on Windows it can download and install Unity Hub itself after you confirm. The installer is checked against Unity's published checksum and signature before it runs, and Windows asks for permission first. While an install runs, projects cannot be opened or changed.
 
 ## Where your data is
 

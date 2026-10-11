@@ -62,6 +62,7 @@ pub async fn install_unity_editor(
     app: AppHandle,
     version: String,
     android: bool,
+    ios: bool,
     vpm: State<'_, VpmContext>,
     prefs: State<'_, Mutex<Prefs>>,
 ) -> Result<(), String> {
@@ -78,7 +79,7 @@ pub async fn install_unity_editor(
         return Err(format!("Unity {} is already installed.", entry.version));
     }
     let session = hub::Session::begin(&app, &vpm, "editor", entry.version)?;
-    tauri::async_runtime::spawn(hub::run_editor_install(session, android));
+    tauri::async_runtime::spawn(hub::run_editor_install(session, android, ios));
     Ok(())
 }
 

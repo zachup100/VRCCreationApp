@@ -26,6 +26,7 @@ export function UnityPage() {
 	const [pendingEditor, setPendingEditor] = useState<string | null>(null);
 	const [installTarget, setInstallTarget] = useState<RecommendedEditor | null>(null);
 	const [withAndroid, setWithAndroid] = useState(false);
+	const [withIos, setWithIos] = useState(false);
 	const [hubPrompt, setHubPrompt] = useState(false);
 	const idle = unityInstall === null;
 
@@ -87,9 +88,9 @@ export function UnityPage() {
 		}
 	};
 
-	const startEditorInstall = async (target: RecommendedEditor, android: boolean) => {
+	const startEditorInstall = async (target: RecommendedEditor, android: boolean, ios: boolean) => {
 		try {
-			await installUnityEditor(target.version, android);
+			await installUnityEditor(target.version, android, ios);
 		} catch (error) {
 			notify("error", errorMessage(error));
 		}
@@ -168,6 +169,7 @@ export function UnityPage() {
 											title={hubMissing ? "Install Unity Hub first" : undefined}
 											onClick={() => {
 												setWithAndroid(false);
+												setWithIos(false);
 												setInstallTarget(entry);
 											}}
 										>
@@ -260,7 +262,7 @@ export function UnityPage() {
 								onClick={() => {
 									const target = installTarget;
 									setInstallTarget(null);
-									void startEditorInstall(target, withAndroid);
+									void startEditorInstall(target, withAndroid, withIos);
 								}}
 							>
 								Install
@@ -270,10 +272,18 @@ export function UnityPage() {
 				>
 					<p>Unity Hub will download and install Unity {installTarget.version}. This is several gigabytes and can take a long time.</p>
 					<div className="check-row top">
-						<Checkbox checked={withAndroid} onChange={setWithAndroid} label="Install Android build support" />
-						<span>
-							Also install Android build support (Android Build Support, OpenJDK, and the Android SDK and NDK tools). Needed to build VRChat projects for Quest and other Android devices.
-						</span>
+						<Checkbox checked={withAndroid} onChange={setWithAndroid} label="Install Android Support" />
+						<div className="option-text">
+							<strong>Install Android Support</strong>
+							<span className="muted">For Quest and other Android builds. Includes OpenJDK and the SDK and NDK tools.</span>
+						</div>
+					</div>
+					<div className="check-row top">
+						<Checkbox checked={withIos} onChange={setWithIos} label="Install iOS Support" />
+						<div className="option-text">
+							<strong>Install iOS Support</strong>
+							<span className="muted">For iPhone and iPad builds.</span>
+						</div>
 					</div>
 					<p className="modal-note muted">While the install runs, projects cannot be opened or changed. You can cancel it from this page, but a cancelled install may leave a partial editor behind.</p>
 				</Modal>

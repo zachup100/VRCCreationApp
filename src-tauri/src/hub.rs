@@ -101,7 +101,7 @@ pub fn launch_flags() -> Vec<String> {
     }
 }
 
-pub fn editor_args(entry: &Recommended, android: bool) -> Vec<String> {
+pub fn editor_args(entry: &Recommended, android: bool, ios: bool) -> Vec<String> {
     let mut args: Vec<String> = [
         "--",
         "--headless",
@@ -115,7 +115,13 @@ pub fn editor_args(entry: &Recommended, android: bool) -> Vec<String> {
     .map(|part| part.to_string())
     .collect();
     if android {
-        args.extend(["--module", "android", "--childModules"].iter().map(|part| part.to_string()));
+        args.extend(["--module", "android"].iter().map(|part| part.to_string()));
+    }
+    if ios {
+        args.extend(["--module", "ios"].iter().map(|part| part.to_string()));
+    }
+    if android || ios {
+        args.push("--childModules".to_string());
     }
     args
 }
@@ -467,12 +473,12 @@ pub fn request_cancel(vpm: &VpmContext) -> bool {
     }
 }
 
-pub async fn run_editor_install(session: Session, android: bool) {
-    let result = editor_install(&session, android).await;
+pub async fn run_editor_install(session: Session, android: bool, ios: bool) {
+    let result = editor_install(&session, android, ios).await;
     session.end(result);
 }
 
-async fn editor_install(session: &Session, android: bool) -> Result<(), Stop> {
+async fn editor_install(session: &Session, android: bool, ios: bool) -> Result<(), Stop> {
     let entry = recommended(&session.version).ok_or("That version is not on the recommended list")?;
     let hub = find_hub().ok_or("Unity Hub was not found")?;
     log(
@@ -483,7 +489,7 @@ async fn editor_install(session: &Session, android: bool) -> Result<(), Stop> {
     session.emit("installing", 0, 0, "Starting Unity Hub");
 
     let mut command = Command::new(&hub);
-    command.args(launch_flags()).args(editor_args(entry, android));
+    command.args(launch_flags()).args(editor_args(entry, android, ios));
     hide_window(&mut command);
 
     let cancel = session.cancel.clone();
@@ -805,13 +811,17 @@ mod tests {
     #[test]
     fn editor_arguments_come_from_the_list() {
         let entry = recommended("2022.3.22f1").unwrap();
-        let plain = editor_args(entry, false);
+        let plain = editor_args(entry, false, false);
         assert_eq!(
             plain,
             ["--", "--headless", "install", "--version", "2022.3.22f1", "--changeset", "887be4894c44"]
         );
-        let android = editor_args(entry, true);
+        let android = editor_args(entry, true, false);
         assert_eq!(&android[plain.len()..], ["--module", "android", "--childModules"]);
+        let ios = editor_args(entry, false, true);
+        assert_eq!(&ios[plain.len()..], ["--module", "ios", "--childModules"]);
+        let both = editor_args(entry, true, true);
+        assert_eq!(&both[plain.len()..], ["--module", "android", "--module", "ios", "--childModules"]);
     }
 
     #[test]

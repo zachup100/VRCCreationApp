@@ -70,8 +70,8 @@ export function installUnityHub(): Promise<void> {
 	return invoke<void>("install_unity_hub");
 }
 
-export function installUnityEditor(version: string, android: boolean): Promise<void> {
-	return invoke<void>("install_unity_editor", { version, android });
+export function installUnityEditor(version: string, android: boolean, ios: boolean): Promise<void> {
+	return invoke<void>("install_unity_editor", { version, android, ios });
 }
 
 export function cancelUnityInstall(): Promise<boolean> {
