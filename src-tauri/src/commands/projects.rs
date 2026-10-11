@@ -32,9 +32,13 @@ pub struct ImportResult {
     skipped: usize,
 }
 
+fn is_root_path(path: &Path) -> bool {
+    path.parent().is_none()
+}
+
 fn is_importable_path(path: &str) -> bool {
     let path = Path::new(path);
-    path.is_absolute() && !path.is_file()
+    path.is_absolute() && !is_root_path(path) && !path.is_file()
 }
 
 pub(crate) fn vpm_category(has_avatars: bool, has_worlds: bool, direct_avatars: bool, direct_worlds: bool) -> Option<&'static str> {
@@ -119,6 +123,9 @@ pub async fn add_project(
     let root = PathBuf::from(&path);
     if !root.is_dir() {
         return Err("The selected path is not a folder".to_string());
+    }
+    if is_root_path(&root) {
+        return Err("A drive or filesystem root cannot be a project. Choose the project's own folder.".to_string());
     }
     let project = UnityProject::load(DefaultProjectIo::new(root.into_boxed_path()))
         .await
@@ -476,6 +483,19 @@ mod tests {
         assert!(!is_importable_path("https://example.com/x"));
         assert!(!is_importable_path("relative/Proj"));
         assert!(!is_importable_path(""));
+        assert!(!is_importable_path("/"));
+    }
+
+    #[test]
+    fn filesystem_and_drive_roots_are_recognised() {
+        assert!(is_root_path(Path::new("/")));
+        assert!(!is_root_path(Path::new("/tmp")));
+        assert!(!is_root_path(Path::new("relative")));
+        #[cfg(windows)]
+        {
+            assert!(is_root_path(Path::new("C:\\")));
+            assert!(!is_root_path(Path::new("C:\\Projects")));
+        }
     }
 
     fn make_project(root: &Path) {
