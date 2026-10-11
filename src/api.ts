@@ -156,6 +156,10 @@ export function deepLinkUnregister(): Promise<DeepLinkStatus> {
 	return invoke<DeepLinkStatus>("deep_link_unregister");
 }
 
+export function deepLinkPendingCount(): Promise<number> {
+	return invoke<number>("deep_link_pending_count");
+}
+
 export function deepLinkTakeAddRepository(): Promise<IncomingRepository | null> {
 	return invoke<IncomingRepository | null>("deep_link_take_add_repository");
 }

@@ -12,6 +12,19 @@ export function Toasts() {
 						size={18}
 					/>
 					<span>{toast.text}</span>
+					{toast.action && (
+						<button
+							type="button"
+							className="link-btn"
+							onClick={() => {
+								const action = toast.action;
+								dismissToast(toast.id);
+								action?.run();
+							}}
+						>
+							{toast.action.label}
+						</button>
+					)}
 					<button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => dismissToast(toast.id)}>
 						<Icon name="x" size={14} />
 					</button>

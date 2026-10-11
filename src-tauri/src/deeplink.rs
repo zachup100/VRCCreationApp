@@ -22,6 +22,30 @@ pub struct AddRepositoryLink {
 #[derive(Default)]
 pub struct PendingLinks(Mutex<Vec<AddRepositoryLink>>);
 
+impl PendingLinks {
+    fn push(&self, link: AddRepositoryLink) {
+        if let Ok(mut pending) = self.0.lock() {
+            if pending.len() >= MAX_PENDING {
+                pending.remove(0);
+            }
+            pending.push(link);
+        }
+    }
+
+    fn take_oldest(&self) -> Option<AddRepositoryLink> {
+        let mut links = self.0.lock().ok()?;
+        if links.is_empty() {
+            None
+        } else {
+            Some(links.remove(0))
+        }
+    }
+
+    fn count(&self) -> usize {
+        self.0.lock().map(|links| links.len()).unwrap_or(0)
+    }
+}
+
 pub fn parse_add_repository(link: &str) -> Option<AddRepositoryLink> {
     let parsed: reqwest::Url = link.trim().parse().ok()?;
     if !parsed.scheme().eq_ignore_ascii_case(SCHEME) {
@@ -72,12 +96,7 @@ pub fn handle_args<I: IntoIterator<Item = String>>(app: &AppHandle, args: I) {
             continue;
         }
         if let Some(link) = parse_add_repository(&arg) {
-            if let Ok(mut pending) = app.state::<PendingLinks>().0.lock() {
-                if pending.len() >= MAX_PENDING {
-                    pending.remove(0);
-                }
-                pending.push(link);
-            }
+            app.state::<PendingLinks>().push(link);
             let _ = app.emit("deep-link-add-repository", ());
         }
     }
@@ -167,12 +186,43 @@ pub async fn deep_link_unregister(app: AppHandle) -> Result<DeepLinkStatus, Stri
 
 #[tauri::command]
 pub fn deep_link_take_add_repository(pending: tauri::State<'_, PendingLinks>) -> Option<AddRepositoryLink> {
-    pending.0.lock().ok()?.pop()
+    pending.take_oldest()
+}
+
+#[tauri::command]
+pub fn deep_link_pending_count(pending: tauri::State<'_, PendingLinks>) -> usize {
+    pending.count()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn link(name: &str) -> AddRepositoryLink {
+        parse_add_repository(&format!("vcc://vpm/addRepo?url=https%3A%2F%2F{name}.com")).unwrap()
+    }
+
+    #[test]
+    fn links_are_taken_oldest_first_and_counted() {
+        let pending = PendingLinks::default();
+        for name in ["a", "b", "c"] {
+            pending.push(link(name));
+        }
+        assert_eq!(pending.count(), 3);
+        assert_eq!(pending.take_oldest().unwrap().url, "https://a.com/");
+        assert_eq!(pending.take_oldest().unwrap().url, "https://b.com/");
+        assert_eq!(pending.count(), 1);
+    }
+
+    #[test]
+    fn the_queue_drops_the_oldest_link_when_full() {
+        let pending = PendingLinks::default();
+        for index in 0..=MAX_PENDING {
+            pending.push(link(&format!("site{index}")));
+        }
+        assert_eq!(pending.count(), MAX_PENDING);
+        assert_eq!(pending.take_oldest().unwrap().url, "https://site1.com/");
+    }
 
     #[test]
     fn a_plain_add_repo_link_is_read() {

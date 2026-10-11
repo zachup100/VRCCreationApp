@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { deepLinkTakeAddRepository, getSettings, listProjects, listUnityEditors, refreshProjectInfo, updateSettings as saveSettings } from "./api";
+import { deepLinkPendingCount, deepLinkTakeAddRepository, getSettings, listProjects, listUnityEditors, refreshProjectInfo, updateSettings as saveSettings } from "./api";
 import type { AppSettings, IncomingRepository, ProjectInfo, SettingsPatch, UnityEditorInfo } from "./api";
 import { errorMessage } from "./format";
 import { applyTheme, loadTheme, loadView, saveTheme, saveView } from "./theme";
@@ -28,10 +28,21 @@ export interface LogEntry {
 	text: string;
 }
 
+export interface ToastAction {
+	label: string;
+	run: () => void;
+}
+
+export interface NotifyOptions {
+	action?: ToastAction;
+	sticky?: boolean;
+}
+
 export interface Toast {
 	id: number;
 	kind: NoticeKind;
 	text: string;
+	action?: ToastAction;
 }
 
 export interface ImportProgress {
@@ -60,7 +71,7 @@ interface AppContextValue {
 	bumpRepositories: () => void;
 	incomingRepository: IncomingRepository | null;
 	clearIncomingRepository: () => void;
-	notify: (kind: NoticeKind, text: string) => void;
+	notify: (kind: NoticeKind, text: string, options?: NotifyOptions) => void;
 	toasts: Toast[];
 	dismissToast: (id: number) => void;
 	log: LogEntry[];
@@ -104,18 +115,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	const [incomingRepository, setIncomingRepository] = useState<IncomingRepository | null>(null);
 	const nextId = useRef(1);
 
+	const linkToast = useRef<number | null>(null);
+	const packageOperationRef = useRef(false);
+	const incomingRef = useRef<IncomingRepository | null>(null);
+
 	const dismissToast = useCallback((id: number) => {
+		if (linkToast.current === id) {
+			linkToast.current = null;
+		}
 		setToasts((current) => current.filter((toast) => toast.id !== id));
 	}, []);
 
 	const notify = useCallback(
-		(kind: NoticeKind, text: string) => {
+		(kind: NoticeKind, text: string, options?: NotifyOptions) => {
 			const id = nextId.current++;
-			setToasts((current) => [...current, { id, kind, text }]);
+			setToasts((current) => [...current, { id, kind, text, action: options?.action }]);
 			if (kind === "error" || kind === "warning") {
 				setLog((current) => [{ id, time: Date.now(), kind, text }, ...current].slice(0, 200));
 			}
-			window.setTimeout(() => dismissToast(id), kind === "error" ? 7000 : 4000);
+			if (!options?.sticky) {
+				window.setTimeout(() => dismissToast(id), kind === "error" ? 7000 : 4000);
+			}
+			return id;
 		},
 		[dismissToast],
 	);
@@ -193,24 +214,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	}, [notify]);
 
 	useEffect(() => {
+		packageOperationRef.current = packageOperation;
+	}, [packageOperation]);
+
+	useEffect(() => {
+		incomingRef.current = incomingRepository;
+	}, [incomingRepository]);
+
+	useEffect(() => {
 		let unlisten: (() => void) | null = null;
 		let cancelled = false;
-		const take = () => {
+		const open = () => {
+			if (packageOperationRef.current) {
+				notify("info", "Finish the current package change first, then open the link again.");
+				announce();
+				return;
+			}
 			deepLinkTakeAddRepository()
 				.then((link) => {
 					if (link && !cancelled) {
 						setIncomingRepository(link);
+						setRoute((current) => (current.page === "packages" ? current : { page: "packages" }));
 					}
 				})
 				.catch(() => undefined);
 		};
-		listen("deep-link-add-repository", take)
+		const announce = () => {
+			if (cancelled || linkToast.current !== null) {
+				return;
+			}
+			linkToast.current = notify("info", "A repository link was opened. Nothing has been requested yet.", {
+				sticky: true,
+				action: { label: "Open", run: open },
+			});
+		};
+		const arrived = () => {
+			if (!incomingRef.current) {
+				announce();
+			}
+		};
+		listen("deep-link-add-repository", arrived)
 			.then((stop) => {
 				if (cancelled) {
 					stop();
 				} else {
 					unlisten = stop;
-					take();
+					deepLinkPendingCount()
+						.then((count) => {
+							if (count > 0) {
+								announce();
+							}
+						})
+						.catch(() => undefined);
 				}
 			})
 			.catch(() => undefined);
@@ -218,18 +273,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			cancelled = true;
 			unlisten?.();
 		};
-	}, []);
+	}, [notify]);
 
-	useEffect(() => {
-		if (!incomingRepository) {
-			return;
-		}
-		if (packageOperation) {
-			notify("info", "A repository link is waiting. It opens once the current package change finishes.");
-			return;
-		}
-		setRoute((current) => (current.page === "packages" ? current : { page: "packages" }));
-	}, [incomingRepository, packageOperation, notify]);
+	const clearIncomingRepository = useCallback(() => {
+		setIncomingRepository(null);
+		deepLinkTakeAddRepository()
+			.then((link) => {
+				if (link) {
+					setIncomingRepository(link);
+				}
+			})
+			.catch(() => undefined);
+	}, []);
 
 	useEffect(() => {
 		applyTheme(theme);
@@ -273,7 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			repositoriesVersion,
 			bumpRepositories: () => setRepositoriesVersion((value) => value + 1),
 			incomingRepository,
-			clearIncomingRepository: () => setIncomingRepository(null),
+			clearIncomingRepository,
 			notify,
 			toasts,
 			dismissToast,
@@ -300,6 +355,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			packageImport,
 			repositoriesVersion,
 			incomingRepository,
+			clearIncomingRepository,
 			notify,
 			toasts,
 			dismissToast,

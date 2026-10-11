@@ -60,6 +60,7 @@ pub fn run() {
             deeplink::deep_link_register,
             deeplink::deep_link_unregister,
             deeplink::deep_link_take_add_repository,
+            deeplink::deep_link_pending_count,
             commands::unity::list_unity_editors,
             commands::unity::add_custom_editor,
             commands::unity::remove_custom_editor,
