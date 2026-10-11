@@ -18,6 +18,7 @@ use zip::ZipArchive;
 
 const STAMP_FORMAT: &str = "%Y-%m-%d_%H-%M-%S";
 const STAMP_LENGTH: usize = 19;
+const MAX_BACKUP_ENTRIES: usize = 1_000_000;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -203,6 +204,38 @@ fn backup_root(archive: &mut ZipArchive<BufReader<File>>) -> Result<String, Stri
     root.ok_or_else(|| "The backup is empty".to_string())
 }
 
+fn describe_size(bytes: u64) -> String {
+    const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
+    const MIB: f64 = 1024.0 * 1024.0;
+    if bytes as f64 >= GIB {
+        format!("{:.1} GB", bytes as f64 / GIB)
+    } else {
+        format!("{:.0} MB", (bytes as f64 / MIB).max(1.0))
+    }
+}
+
+fn check_entry_count(count: usize) -> Result<(), String> {
+    if count > MAX_BACKUP_ENTRIES {
+        return Err("The backup has too many files to restore".to_string());
+    }
+    Ok(())
+}
+
+fn check_free_space(needed: u64, available: u64) -> Result<(), String> {
+    if needed > available {
+        return Err(format!(
+            "There is not enough free disk space to restore this backup. It needs about {} and {} is free.",
+            describe_size(needed),
+            describe_size(available)
+        ));
+    }
+    Ok(())
+}
+
+fn free_space_near(path: &Path) -> Option<u64> {
+    path.ancestors().find(|ancestor| ancestor.exists()).and_then(|ancestor| fs4::available_space(ancestor).ok())
+}
+
 fn extract_backup(
     zip_path: &Path,
     target: &Path,
@@ -214,6 +247,18 @@ fn extract_backup(
     .map_err(|error| format!("The backup is damaged: {error}"))?;
     let root = backup_root(&mut archive)?;
     let total = archive.len();
+    check_entry_count(total)?;
+
+    let mut declared: u64 = 0;
+    for index in 0..total {
+        let entry = archive
+            .by_index_raw(index)
+            .map_err(|error| format!("The backup is damaged: {error}"))?;
+        declared = declared.saturating_add(entry.size());
+    }
+    if let Some(available) = free_space_near(target) {
+        check_free_space(declared, available)?;
+    }
 
     for index in 0..total {
         let mut entry = archive
@@ -239,8 +284,13 @@ fn extract_backup(
             }
             let mut output = File::create(&destination)
                 .map_err(|error| format!("Could not write the project files: {error}"))?;
-            std::io::copy(&mut entry, &mut output)
+            let declared_size = entry.size();
+            let mut limited = (&mut entry).take(declared_size.saturating_add(1));
+            let copied = std::io::copy(&mut limited, &mut output)
                 .map_err(|error| format!("Could not write the project files: {error}"))?;
+            if copied > declared_size {
+                return Err("The backup is damaged: a file is larger than it says".to_string());
+            }
         }
         if index % 25 == 0 || index + 1 == total {
             progress(index + 1, total);
@@ -374,6 +424,25 @@ mod tests {
             writer.set_comment(comment);
         }
         writer.finish().unwrap();
+    }
+
+    #[test]
+    fn too_many_entries_are_refused() {
+        assert!(check_entry_count(MAX_BACKUP_ENTRIES).is_ok());
+        assert!(check_entry_count(MAX_BACKUP_ENTRIES + 1).is_err());
+    }
+
+    #[test]
+    fn a_backup_that_does_not_fit_on_the_disk_is_refused() {
+        assert!(check_free_space(100, 100).is_ok());
+        let message = check_free_space(5 * 1024 * 1024 * 1024, 1024 * 1024 * 1024).unwrap_err();
+        assert!(message.contains("5.0 GB") && message.contains("1.0 GB"));
+    }
+
+    #[test]
+    fn free_space_is_found_for_a_folder_that_does_not_exist_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(free_space_near(&dir.path().join("not").join("yet")).is_some());
     }
 
     #[test]
