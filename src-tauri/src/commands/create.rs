@@ -94,7 +94,7 @@ pub fn list_templates() -> Vec<TemplateInfo> {
         .collect()
 }
 
-fn is_reserved_name(name: &str) -> bool {
+pub(crate) fn is_reserved_name(name: &str) -> bool {
     let stem = name.split('.').next().unwrap_or("").to_ascii_lowercase();
     matches!(stem.as_str(), "con" | "prn" | "aux" | "nul")
         || (stem.len() == 4

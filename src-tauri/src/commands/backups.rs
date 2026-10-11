@@ -1,5 +1,5 @@
 use crate::applog::log;
-use crate::commands::create::validate_name;
+use crate::commands::create::{is_reserved_name, validate_name};
 use crate::commands::migrate::{backup_directory, emit, BackupMeta, TaskProgress, BACKUP_MARKER, LEGACY_BACKUP_MARKER};
 use crate::commands::projects::{category_of, detect_type, to_info, vpm_category, ProjectInfo};
 use crate::prefs::Prefs;
@@ -242,6 +242,17 @@ fn describe_size(bytes: u64) -> String {
     }
 }
 
+fn windows_name_problem(relative: &Path) -> Option<String> {
+    for component in relative.components() {
+        let name = component.as_os_str().to_string_lossy();
+        let invalid = |c: char| c.is_control() || matches!(c, ':' | '*' | '?' | '"' | '<' | '>' | '|');
+        if name.chars().any(invalid) || name.ends_with('.') || name.ends_with(' ') || is_reserved_name(&name) {
+            return Some(relative.to_string_lossy().replace('\\', "/"));
+        }
+    }
+    None
+}
+
 fn check_entry_count(count: usize) -> Result<(), String> {
     if count > MAX_BACKUP_ENTRIES {
         return Err("The backup has too many files to restore".to_string());
@@ -283,6 +294,13 @@ fn extract_backup(
             .by_index_raw(index)
             .map_err(|error| format!("The backup is damaged: {error}"))?;
         declared = declared.saturating_add(entry.size());
+        if cfg!(windows) {
+            if let Some(path) = entry.enclosed_name() {
+                if let Some(bad) = path.strip_prefix(&root).ok().and_then(windows_name_problem) {
+                    return Err(format!("The backup contains a file name that Windows cannot store: {bad}"));
+                }
+            }
+        }
     }
     if let Some(available) = free_space_near(target) {
         check_free_space(declared, available)?;
@@ -521,6 +539,21 @@ mod tests {
         extract_backup(&zip_path, &target, &mut report).unwrap();
         assert!(target.join("a.txt").is_file());
         assert!(!target.join(STAGING_MARKER).exists());
+    }
+
+    #[test]
+    fn names_windows_cannot_store_are_reported() {
+        for bad in ["Assets/NUL.txt", "Assets/con", "Assets/COM1.cs", "Assets/a:stream", "Assets/what?.png", "Assets/dir./x.png", "Assets/trailing ", "Assets/a|b", "Assets/q\"x"] {
+            assert!(windows_name_problem(Path::new(bad)).is_some(), "{bad} should be reported");
+        }
+        assert_eq!(windows_name_problem(Path::new("Assets/Scripts/aux/x.cs")).as_deref(), Some("Assets/Scripts/aux/x.cs"));
+    }
+
+    #[test]
+    fn ordinary_names_are_accepted() {
+        for good in ["Assets/Scripts/Player.cs", "Assets/My Folder/tex.png", "ProjectSettings/ProjectVersion.txt", "Assets/.hidden", "Assets/a.b.c", "Assets/comet.png", "Assets/console.cs"] {
+            assert!(windows_name_problem(Path::new(good)).is_none(), "{good} should be accepted");
+        }
     }
 
     #[test]
