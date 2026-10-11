@@ -93,6 +93,14 @@ pub fn find_hub() -> Option<PathBuf> {
     hub_candidates().into_iter().find(|path| path.is_file())
 }
 
+pub fn launch_flags() -> Vec<String> {
+    if cfg!(target_os = "linux") {
+        vec!["--ozone-platform=headless".to_string()]
+    } else {
+        Vec::new()
+    }
+}
+
 pub fn editor_args(entry: &Recommended, android: bool) -> Vec<String> {
     let mut args: Vec<String> = [
         "--",
@@ -475,7 +483,7 @@ async fn editor_install(session: &Session, android: bool) -> Result<(), Stop> {
     session.emit("installing", 0, 0, "Starting Unity Hub");
 
     let mut command = Command::new(&hub);
-    command.args(editor_args(entry, android));
+    command.args(launch_flags()).args(editor_args(entry, android));
     hide_window(&mut command);
 
     let cancel = session.cancel.clone();
@@ -804,6 +812,16 @@ mod tests {
         );
         let android = editor_args(entry, true);
         assert_eq!(&android[plain.len()..], ["--module", "android", "--childModules"]);
+    }
+
+    #[test]
+    fn linux_runs_hub_without_a_window_and_other_systems_pass_nothing() {
+        let flags = launch_flags();
+        if cfg!(target_os = "linux") {
+            assert_eq!(flags, ["--ozone-platform=headless"]);
+        } else {
+            assert!(flags.is_empty());
+        }
     }
 
     #[test]
