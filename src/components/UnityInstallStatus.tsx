@@ -20,7 +20,8 @@ function title(install: UnityInstall): string {
 
 function detail(install: UnityInstall, percent: number | null): string {
 	if (install.kind === "editor") {
-		return install.line || "Unity Hub is working. This can take a long time.";
+		const status = install.line || "Unity Hub is working. This can take a long time.";
+		return percent === null ? status : `${percent}% overall. ${status}`;
 	}
 	switch (install.phase) {
 		case "verifying":
@@ -41,7 +42,7 @@ function cancellable(install: UnityInstall): boolean {
 
 export function UnityInstallStatus({ install }: { install: UnityInstall }) {
 	const { notify } = useApp();
-	const determinate = install.phase === "downloading" && install.kind === "hub" && install.total > 0;
+	const determinate = install.total > 0 && (install.kind === "editor" || install.phase === "downloading");
 	const percent = determinate ? Math.min(100, Math.round((install.bytes / install.total) * 100)) : null;
 	const heading = title(install);
 

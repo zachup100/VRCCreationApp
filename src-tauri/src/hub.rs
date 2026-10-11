@@ -113,11 +113,75 @@ pub fn editor_args(entry: &Recommended, android: bool) -> Vec<String> {
 }
 
 pub fn sanitize_line(line: &str) -> String {
-    let cleaned: String = line
-        .chars()
-        .filter(|character| !character.is_control())
-        .collect();
+    let mut cleaned = String::new();
+    let mut characters = line.chars().peekable();
+    while let Some(character) = characters.next() {
+        if character == '\u{1b}' {
+            match characters.peek() {
+                Some('[') => {
+                    characters.next();
+                    for next in characters.by_ref() {
+                        if ('@'..='~').contains(&next) {
+                            break;
+                        }
+                    }
+                }
+                Some(_) => {
+                    characters.next();
+                }
+                None => {}
+            }
+        } else if !character.is_control() {
+            cleaned.push(character);
+        }
+    }
     cleaned.trim().chars().take(LINE_LIMIT).collect()
+}
+
+pub fn parse_status(line: &str) -> Option<(String, String, Option<f64>)> {
+    let rest = line.strip_prefix('[')?;
+    let (name, status) = rest.split_once(']')?;
+    let status = status.trim();
+    if name.trim().is_empty() || status.is_empty() {
+        return None;
+    }
+    let percent = status
+        .split_whitespace()
+        .last()
+        .and_then(|word| word.strip_suffix('%'))
+        .and_then(|number| number.parse::<f64>().ok())
+        .filter(|value| (0.0..=100.0).contains(value));
+    Some((name.trim().to_string(), status.to_string(), percent))
+}
+
+#[derive(Default)]
+pub struct Progress {
+    items: Vec<(String, f64)>,
+}
+
+impl Progress {
+    pub fn update(&mut self, line: &str) -> Option<String> {
+        let (name, status, percent) = parse_status(line)?;
+        let index = match self.items.iter().position(|(known, _)| *known == name) {
+            Some(index) => index,
+            None => {
+                self.items.push((name.clone(), 0.0));
+                self.items.len() - 1
+            }
+        };
+        if let Some(value) = percent {
+            self.items[index].1 = value;
+        }
+        Some(format!("{name}: {status}"))
+    }
+
+    pub fn percent(&self) -> u32 {
+        if self.items.is_empty() {
+            return 0;
+        }
+        let total: f64 = self.items.iter().map(|(_, value)| value).sum();
+        ((total / self.items.len() as f64).floor() as u32).min(99)
+    }
 }
 
 pub enum RunEnd {
@@ -419,26 +483,38 @@ async fn editor_install(session: &Session, android: bool) -> Result<(), Stop> {
     let version = session.version.clone();
     let (outcome, tail) = tokio::task::spawn_blocking(move || {
         let mut tail: Vec<String> = Vec::new();
+        let mut progress = Progress::default();
+        let mut shown = String::new();
         let mut last = Instant::now() - EMIT_INTERVAL;
         let outcome = run_streaming(command, Some(&cancel), EDITOR_LIMIT, |raw| {
             let line = sanitize_line(raw);
             if line.is_empty() {
                 return;
             }
-            if tail.len() == TAIL_LINES {
-                tail.remove(0);
+            match progress.update(&line) {
+                Some(status) => shown = status,
+                None => {
+                    if line.ends_with(':') {
+                        return;
+                    }
+                    if tail.len() == TAIL_LINES {
+                        tail.remove(0);
+                    }
+                    tail.push(line.clone());
+                    shown = line;
+                }
             }
-            tail.push(line.clone());
             if last.elapsed() >= EMIT_INTERVAL {
                 last = Instant::now();
+                let percent = progress.percent() as u64;
                 let _ = app.emit(
                     EVENT,
                     InstallEvent {
                         kind: "editor",
                         phase: "installing",
-                        bytes: 0,
-                        total: 0,
-                        line,
+                        bytes: percent,
+                        total: if percent > 0 { 100 } else { 0 },
+                        line: shown.clone(),
                         version: version.clone(),
                         message: String::new(),
                     },
@@ -732,9 +808,38 @@ mod tests {
 
     #[test]
     fn output_lines_are_cleaned_and_shortened() {
-        assert_eq!(sanitize_line("  \u{1b}[32mhello\u{7}  "), "[32mhello");
+        assert_eq!(sanitize_line("  \u{1b}[32mhello\u{7}  "), "hello");
+        assert_eq!(sanitize_line("\u{1b}[10A\u{1b}[0JProgress:"), "Progress:");
+        assert_eq!(sanitize_line("a\u{1b}[2Kb\u{1b}7c"), "abc");
+        assert_eq!(sanitize_line("tail\u{1b}"), "tail");
         assert_eq!(sanitize_line(&"x".repeat(500)).len(), LINE_LIMIT);
         assert_eq!(sanitize_line("\r\n"), "");
+    }
+
+    #[test]
+    fn hub_status_lines_give_a_name_and_a_percent() {
+        let (name, status, percent) = parse_status("[Unity (2019.4.31f1)] downloading 6.99%").unwrap();
+        assert_eq!(name, "Unity (2019.4.31f1)");
+        assert_eq!(status, "downloading 6.99%");
+        assert_eq!(percent, Some(6.99));
+        assert_eq!(parse_status("[Unity (2019.4.31f1)] in progress...").unwrap().2, None);
+        assert!(parse_status("Progress:").is_none());
+        assert!(parse_status("[] downloading 5%").is_none());
+        assert!(parse_status("[Unity] downloading 500%").unwrap().2.is_none());
+    }
+
+    #[test]
+    fn overall_progress_averages_every_item_and_stays_below_a_hundred() {
+        let mut progress = Progress::default();
+        assert_eq!(progress.percent(), 0);
+        assert_eq!(progress.update("Progress:"), None);
+        assert!(progress.update("[Unity] in progress...").is_some());
+        assert!(progress.update("[Android Build Support] in progress...").is_some());
+        progress.update("[Unity] downloading 50%");
+        assert_eq!(progress.percent(), 25);
+        progress.update("[Unity] downloading 100%");
+        progress.update("[Android Build Support] downloading 100%");
+        assert_eq!(progress.percent(), 99);
     }
 
     #[cfg(unix)]
