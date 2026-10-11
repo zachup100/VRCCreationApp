@@ -3,6 +3,7 @@ pub mod backups;
 pub mod changes;
 pub mod create;
 pub mod duplicate;
+pub mod install;
 pub mod migrate;
 pub mod packages;
 pub mod presets;

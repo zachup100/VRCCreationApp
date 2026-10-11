@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { deepLinkPendingCount, deepLinkTakeAddRepository, getSettings, listProjects, listUnityEditors, refreshProjectInfo, updateSettings as saveSettings } from "./api";
-import type { AppSettings, IncomingRepository, ProjectInfo, SettingsPatch, UnityEditorInfo } from "./api";
+import type { AppSettings, IncomingRepository, ProjectInfo, SettingsPatch, UnityEditorInfo, UnityInstall } from "./api";
 import { errorMessage } from "./format";
 import { applyTheme, loadTheme, loadView, saveTheme, saveView } from "./theme";
 import type { ThemeChoice, ViewMode } from "./theme";
@@ -14,6 +14,7 @@ export type Route =
 	| { page: "backups" }
 	| { page: "new" }
 	| { page: "manage"; path: string }
+	| { page: "unity" }
 	| { page: "learn" }
 	| { page: "tools" }
 	| { page: "logs" }
@@ -63,6 +64,7 @@ interface AppContextValue {
 	refreshEditors: () => Promise<void>;
 	settings: AppSettings;
 	updateSettings: (patch: SettingsPatch) => Promise<boolean>;
+	unityInstall: UnityInstall | null;
 	packageOperation: boolean;
 	setPackageOperation: (active: boolean) => void;
 	packageImport: ImportProgress | null;
@@ -109,6 +111,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		showPrerelease: false,
 		defaultUnityArgs: "",
 	});
+	const [unityInstall, setUnityInstall] = useState<UnityInstall | null>(null);
 	const [packageOperation, setPackageOperation] = useState(false);
 	const [packageImport, setPackageImport] = useState<ImportProgress | null>(null);
 	const [repositoriesVersion, setRepositoriesVersion] = useState(0);
@@ -198,7 +201,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		let unlisten: (() => void) | null = null;
 		let cancelled = false;
-		listen("close-blocked", () => notify("info", "Package changes are in progress. Close the app again once they finish."))
+		listen("close-blocked", () => notify("info", "Something is still in progress. Close the app again once it finishes."))
 			.then((stop) => {
 				if (cancelled) {
 					stop();
@@ -212,6 +215,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			unlisten?.();
 		};
 	}, [notify]);
+
+	useEffect(() => {
+		let unlisten: (() => void) | null = null;
+		let cancelled = false;
+		listen<UnityInstall>("unity-install", (event) => {
+			const install = event.payload;
+			if (install.phase === "finished" || install.phase === "failed" || install.phase === "cancelled") {
+				setUnityInstall(null);
+				notify(install.phase === "finished" ? "success" : install.phase === "failed" ? "error" : "info", install.message);
+				void refreshEditors();
+			} else {
+				setUnityInstall(install);
+			}
+		})
+			.then((stop) => {
+				if (cancelled) {
+					stop();
+				} else {
+					unlisten = stop;
+				}
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+			unlisten?.();
+		};
+	}, [notify, refreshEditors]);
 
 	useEffect(() => {
 		packageOperationRef.current = packageOperation;
@@ -321,6 +351,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			refreshEditors,
 			settings,
 			updateSettings,
+			unityInstall,
 			packageOperation,
 			setPackageOperation,
 			packageImport,
@@ -351,6 +382,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			refreshEditors,
 			settings,
 			updateSettings,
+			unityInstall,
 			packageOperation,
 			packageImport,
 			repositoriesVersion,

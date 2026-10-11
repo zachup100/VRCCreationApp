@@ -5128,6 +5128,7 @@ dependencies = [
 name = "vrccreationapp"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "fs4",
  "futures",
@@ -5139,6 +5140,7 @@ dependencies = [
  "rfd 0.17.2",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tauri",
  "tauri-build",
  "tauri-plugin-deep-link",

@@ -12,6 +12,7 @@ import { PresetsPage } from "./pages/PresetsPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { ToolsPage } from "./pages/ToolsPage";
+import { UnityPage } from "./pages/UnityPage";
 
 const titles: Record<string, string> = {
 	projects: "Projects",
@@ -20,6 +21,7 @@ const titles: Record<string, string> = {
 	backups: "Backups",
 	new: "New Project",
 	manage: "Manage Project",
+	unity: "Unity",
 	learn: "Learn",
 	tools: "Tools",
 	logs: "Logs",
@@ -44,6 +46,8 @@ function Page() {
 			return <NewProjectPage />;
 		case "manage":
 			return <ManageProjectPage path={route.path} />;
+		case "unity":
+			return <UnityPage />;
 		case "learn":
 			return <LearnPage />;
 		case "tools":

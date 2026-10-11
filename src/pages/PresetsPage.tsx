@@ -1,3 +1,4 @@
+import { UnityInstallNotice } from "../components/UnityInstallStatus";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../AppContext";
 import { deletePreset, listPresets } from "../api";
@@ -62,6 +63,7 @@ export function PresetsPage() {
 					Create Preset
 				</Button>
 			</header>
+			<UnityInstallNotice />
 
 			{presets.length === 0 && !loading ? (
 				<div className="card">

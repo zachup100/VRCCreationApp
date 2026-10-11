@@ -1,3 +1,4 @@
+import { UnityInstallNotice } from "../components/UnityInstallStatus";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useApp } from "../AppContext";
 import { useActions } from "../actions";
@@ -158,7 +159,8 @@ function PackageTable({
 }
 
 export function ManageProjectPage({ path }: { path: string }) {
-	const { projects, editors, editorsLoading, navigate, notify, setPackageOperation } = useApp();
+	const { projects, editors, editorsLoading, navigate, notify, setPackageOperation, unityInstall } = useApp();
+	const locked = unityInstall !== null;
 	const actions = useActions();
 	const dialogs = useProjectDialogs();
 	const [query, setQuery] = useState("");
@@ -292,7 +294,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 				<h1>{project.name}</h1>
 				<span className="spacer" />
 				<SplitButton
-					disabled={working}
+					disabled={working || locked}
 					onClick={() => void actions.open(project)}
 					items={[
 						{ label: "Open With...", icon: "unity", disabled: !project.exists, onSelect: () => dialogs.openWith(project) },
@@ -311,6 +313,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 					Open Project
 				</SplitButton>
 			</header>
+			<UnityInstallNotice />
 			<p className="located">
 				<strong>Located At:</strong> <span className="path-chip inline">{project.path}</span>
 				{!project.exists && <span className="tag danger">missing</span>}
@@ -318,7 +321,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 			{isLegacy(project) && project.exists && (
 				<div className="notice warn">
 					<span>This is a legacy project that uses the old VRChat SDK. Migrate it to the VPM package system to manage packages here.</span>
-					<Button variant="success" icon="upload" disabled={working} onClick={() => dialogs.task(project, "vpm")}>
+					<Button variant="success" icon="upload" disabled={working || locked} onClick={() => dialogs.task(project, "vpm")}>
 						Migrate Project
 					</Button>
 				</div>
@@ -329,7 +332,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 						{missing.length} {missing.length === 1 ? "package is" : "packages are"} missing from this project's Packages folder ({missing.slice(0, 4).join(", ")}
 						{missing.length > 4 ? ", and more" : ""}). Resolve to download and reinstall them.
 					</span>
-					<Button variant="success" icon="refresh" disabled={working || stagedCount > 0} onClick={() => void plan({ installs: [], removes: [], resolve: true })}>
+					<Button variant="success" icon="refresh" disabled={working || locked || stagedCount > 0} onClick={() => void plan({ installs: [], removes: [], resolve: true })}>
 						Resolve Packages
 					</Button>
 				</div>
@@ -340,7 +343,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 						{redundant.length} {redundant.length === 1 ? "entry" : "entries"} in this project's package list ({redundant.join(", ")}) {redundant.length === 1 ? "is" : "are"} already included in an installed package and
 						{redundant.length === 1 ? " was" : " were"} never installed. They can be cleaned up safely.
 					</span>
-					<Button variant="success" icon="trash" disabled={working || stagedCount > 0} onClick={() => setConfirmCleanup(true)}>
+					<Button variant="success" icon="trash" disabled={working || locked || stagedCount > 0} onClick={() => setConfirmCleanup(true)}>
 						Clean Up
 					</Button>
 				</div>
@@ -460,7 +463,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 						rows={packages.rows}
 						query={query}
 						filter={filter}
-						busy={working}
+						busy={working || locked}
 						hasSelection={stagedCount > 0}
 						staged={staged}
 						onStage={stageChange}
@@ -478,7 +481,7 @@ export function ManageProjectPage({ path }: { path: string }) {
 					<Button variant="ghost" disabled={working} onClick={() => setStaged({})}>
 						Cancel
 					</Button>
-					<Button variant="primary" disabled={working} onClick={() => void plan(stagedRequest())}>
+					<Button variant="primary" disabled={working || locked} onClick={() => void plan(stagedRequest())}>
 						Submit
 					</Button>
 				</div>

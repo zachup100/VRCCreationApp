@@ -4,18 +4,16 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useApp } from "../AppContext";
 import {
-	addCustomEditor,
 	deepLinkRegister,
 	deepLinkStatus,
 	deepLinkUnregister,
 	getPrivateHostBlocking,
-	removeCustomEditor,
 	setPrivateHostBlocking,
 } from "../api";
 import type { DeepLinkStatus } from "../api";
 import { useActions } from "../actions";
 import { Button, IconButton } from "../components/Button";
-import { ConfirmModal, EmptyState, Select, Switch, Tabs } from "../components/Controls";
+import { ConfirmModal, Select, Switch, Tabs } from "../components/Controls";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
 import { LicensesModal } from "../components/LicensesModal";
 import type { Tab } from "../components/Controls";
@@ -285,155 +283,9 @@ function PrivateHostsRow() {
 }
 
 function GeneralTab() {
-	const { editors, editorsLoading, editorsError, refreshEditors, projects, notify } = useApp();
 	const actions = useActions();
-	const [editorsOpen, setEditorsOpen] = useState(false);
-	const [addingEditor, setAddingEditor] = useState(false);
-	const [pendingEditor, setPendingEditor] = useState<string | null>(null);
-
-	const addEditor = async () => {
-		const isWindows = navigator.userAgent.includes("Windows");
-		let selected: string | string[] | null;
-		try {
-			selected = await open({
-				directory: false,
-				multiple: false,
-				title: "Select the Unity editor program",
-				filters: isWindows ? [{ name: "Unity", extensions: ["exe"] }] : undefined,
-			});
-		} catch (error) {
-			notify("error", errorMessage(error));
-			return;
-		}
-		if (typeof selected !== "string") {
-			return;
-		}
-		setPendingEditor(selected);
-	};
-
-	const confirmAddEditor = async (selected: string) => {
-		setAddingEditor(true);
-		try {
-			const added = await addCustomEditor(selected);
-			await refreshEditors();
-			notify("success", `Added Unity ${added.version}`);
-		} catch (error) {
-			notify("error", errorMessage(error));
-		} finally {
-			setAddingEditor(false);
-		}
-	};
-
-	const removeEditor = async (path: string, version: string) => {
-		try {
-			await removeCustomEditor(path);
-			await refreshEditors();
-			notify("info", `Removed Unity ${version} from the list`);
-		} catch (error) {
-			notify("error", errorMessage(error));
-		}
-	};
 	return (
 		<>
-			<section className="settings-section">
-				<div className="section-head">
-					<button
-						type="button"
-						className="collapse-toggle"
-						aria-expanded={editorsOpen}
-						aria-controls="unity-editors-panel"
-						onClick={() => setEditorsOpen((value) => !value)}
-					>
-						<Icon name={editorsOpen ? "chevronUp" : "chevronDown"} size={20} />
-						<span>
-							<span className="collapse-title">Unity Editors</span>
-							<span className="muted">
-								{editorsOpen
-									? "Editors found through Unity Hub and its install folders, plus any you add yourself. Adding an editor may run it once to read its version."
-									: editorsLoading
-										? "Looking for editors..."
-										: `${editors.length} ${editors.length === 1 ? "editor" : "editors"} found`}
-							</span>
-						</span>
-					</button>
-					{editorsOpen && (
-						<div className="button-stack">
-							<Button icon="plusCircle" variant="ghost" disabled={addingEditor} onClick={() => void addEditor()}>
-								{addingEditor ? "Adding..." : "Add Editor"}
-							</Button>
-							<Button icon="refresh" variant="ghost" disabled={editorsLoading} onClick={() => void refreshEditors()}>
-								Rescan
-							</Button>
-						</div>
-					)}
-				</div>
-				{editorsOpen && (
-				<div className="card" id="unity-editors-panel">
-					{editorsError ? (
-						<EmptyState icon="unity" title="Could not read Unity installs">
-							{editorsError}
-						</EmptyState>
-					) : editors.length === 0 && !editorsLoading ? (
-						<EmptyState
-							icon="unity"
-							title="No Unity editors found"
-							actions={
-								<Button variant="primary" icon="external" onClick={() => void actions.openLink("https://unity.com/download")}>
-									Open Unity download page
-								</Button>
-							}
-						>
-							Install Unity Hub and a Unity editor, then rescan.
-						</EmptyState>
-					) : (
-						<ul className="editor-list">
-							{editors.map((editor) => {
-								const used = projects.filter((project) => project.unityVersion === editor.version).length;
-								return (
-									<li key={`${editor.version}-${editor.path}`} className={`editor-row${editor.custom ? " custom" : ""}`}>
-										<span className="editor-icon">
-											<Icon name="unity" size={22} />
-										</span>
-										<div className="editor-info">
-											<div className="editor-title">
-												<strong>{editor.version}</strong>
-												{editor.architecture && <span className="chip">{editor.architecture}</span>}
-												{editor.custom && <span className="chip">custom</span>}
-											</div>
-											<span className="path-chip" title={editor.path}>
-												{editor.path}
-											</span>
-										</div>
-										<span className={`editor-usage${used === 0 ? " none" : ""}`}>
-											{used === 0 ? "No projects" : `${used} ${used === 1 ? "project" : "projects"}`}
-										</span>
-										{editor.custom && (
-											<IconButton
-												icon="minusCircle"
-												label={`Remove Unity ${editor.version} from the list`}
-												className="remove"
-												onClick={() => void removeEditor(editor.path, editor.version)}
-											/>
-										)}
-									</li>
-								);
-							})}
-						</ul>
-					)}
-				</div>
-				)}
-			</section>
-			{pendingEditor && (
-				<ConfirmModal
-					title="Add Unity Editor"
-					confirmLabel="Add Editor"
-					onClose={() => setPendingEditor(null)}
-					onConfirm={() => void confirmAddEditor(pendingEditor)}
-				>
-					<div className="kv-value">{pendingEditor}</div>
-					<p>To read its version, this app may run this program once. Only add Unity editors that you trust.</p>
-				</ConfirmModal>
-			)}
 			<ProjectSettings />
 			<section className="settings-section">
 				<div>

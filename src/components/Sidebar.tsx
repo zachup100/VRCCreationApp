@@ -13,6 +13,7 @@ const top: { page: Page; label: string; icon: IconName }[] = [
 ];
 
 const bottom: { page: Page; label: string; icon: IconName }[] = [
+	{ page: "unity", label: "Unity", icon: "unity" },
 	{ page: "learn", label: "Learn", icon: "learn" },
 	{ page: "logs", label: "Logs", icon: "logs" },
 	{ page: "tools", label: "Tools", icon: "tools" },

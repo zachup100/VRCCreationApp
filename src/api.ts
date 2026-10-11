@@ -7,6 +7,30 @@ export interface UnityEditorInfo {
 	custom: boolean;
 }
 
+export interface HubStatus {
+	found: boolean;
+	path: string | null;
+	canInstall: boolean;
+}
+
+export interface RecommendedEditor {
+	version: string;
+	label: string;
+	note: string;
+}
+
+export type InstallPhase = "starting" | "downloading" | "verifying" | "installing" | "finished" | "failed" | "cancelled";
+
+export interface UnityInstall {
+	kind: "hub" | "editor";
+	phase: InstallPhase;
+	bytes: number;
+	total: number;
+	line: string;
+	version: string;
+	message: string;
+}
+
 export type ProjectCategory = "avatar" | "world" | "legacy-avatar" | "legacy-world" | "other";
 
 export interface ProjectInfo {
@@ -32,6 +56,26 @@ export function listUnityEditors(): Promise<UnityEditorInfo[]> {
 
 export function addCustomEditor(path: string): Promise<UnityEditorInfo> {
 	return invoke<UnityEditorInfo>("add_custom_editor", { path });
+}
+
+export function unityHubStatus(): Promise<HubStatus> {
+	return invoke<HubStatus>("unity_hub_status");
+}
+
+export function recommendedEditors(): Promise<RecommendedEditor[]> {
+	return invoke<RecommendedEditor[]>("recommended_editors");
+}
+
+export function installUnityHub(): Promise<void> {
+	return invoke<void>("install_unity_hub");
+}
+
+export function installUnityEditor(version: string, android: boolean): Promise<void> {
+	return invoke<void>("install_unity_editor", { version, android });
+}
+
+export function cancelUnityInstall(): Promise<boolean> {
+	return invoke<boolean>("cancel_unity_install");
 }
 
 export function removeCustomEditor(path: string): Promise<void> {

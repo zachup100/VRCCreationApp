@@ -1,3 +1,4 @@
+import { UnityInstallNotice } from "../components/UnityInstallStatus";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../AppContext";
@@ -68,6 +69,7 @@ export function BackupsPage() {
 					Open Backup Folder
 				</Button>
 			</header>
+			<UnityInstallNotice />
 
 			{backups.length === 0 && !loading ? (
 				<div className="card">

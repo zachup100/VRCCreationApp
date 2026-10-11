@@ -1,3 +1,4 @@
+import { UnityInstallNotice } from "../components/UnityInstallStatus";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useEffect, useState } from "react";
 import { useApp } from "../AppContext";
@@ -19,7 +20,7 @@ function joinPath(location: string, name: string): string {
 }
 
 export function NewProjectPage() {
-	const { navigate, notify, editors, editorsLoading, refreshProjects, setPackageOperation, settings } = useApp();
+	const { navigate, notify, editors, editorsLoading, refreshProjects, setPackageOperation, settings, unityInstall } = useApp();
 	const [templates, setTemplates] = useState<TemplateInfo[]>([]);
 	const [presets, setPresets] = useState<Preset[]>([]);
 	const [presetId, setPresetId] = useState("");
@@ -97,6 +98,7 @@ export function NewProjectPage() {
 			<header className="page-header">
 				<h1>New Project</h1>
 			</header>
+			<UnityInstallNotice />
 
 			<h2 className="section-title">Select template</h2>
 			<div className="template-grid" role="radiogroup" aria-label="Project template" onKeyDown={radioGroupKeys}>
@@ -207,7 +209,7 @@ export function NewProjectPage() {
 				)}
 				{error && <p className="field-error">{error}</p>}
 				<div className="form-actions">
-					<Button variant="primary" icon="rocket" disabled={!canCreate} onClick={() => void create()}>
+					<Button variant="primary" icon="rocket" disabled={!canCreate || unityInstall !== null} onClick={() => void create()}>
 						{creating ? "Creating..." : "Create Project"}
 					</Button>
 					<Button variant="ghost" disabled={creating} onClick={() => navigate({ page: "projects" })}>

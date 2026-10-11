@@ -1,3 +1,4 @@
+import { UnityInstallNotice } from "../components/UnityInstallStatus";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../AppContext";
 import { repositoriesInfo, repositoryRemove, repositorySetHidden } from "../api";
@@ -197,6 +198,7 @@ export function PackagesPage() {
 			<header className="page-header">
 				<h1>Packages</h1>
 			</header>
+			<UnityInstallNotice />
 			<PackagesContent onOpenHidden={() => setView("hidden")} />
 		</div>
 	);

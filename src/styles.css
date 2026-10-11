@@ -2311,3 +2311,30 @@ code {
 	white-space: pre-wrap;
 	word-break: break-word;
 }
+
+.install-status {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 14px 16px;
+}
+
+.install-status-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.install-detail {
+	font-size: 14px;
+	overflow-wrap: anywhere;
+}
+
+.plain-steps {
+	margin: 8px 0;
+	padding-left: 22px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}

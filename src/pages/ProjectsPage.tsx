@@ -10,6 +10,7 @@ import { Icon } from "../components/Icons";
 import { MoreMenu, SplitButton } from "../components/Menu";
 import { useProjectDialogs } from "../components/ProjectDialogs";
 import type { MenuItem } from "../components/Menu";
+import { UnityInstallNotice } from "../components/UnityInstallStatus";
 import { TypeBadge, VersionChip, canMigrateTo2022, hasEditor, isLegacy } from "../components/ProjectParts";
 import { timeAgo } from "../format";
 
@@ -52,9 +53,10 @@ function StarButton({ project, onToggle }: { project: ProjectInfo; onToggle: () 
 }
 
 export function ProjectsPage() {
-	const { packageOperation, projects, projectsLoading, rescanProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
+	const { unityInstall, packageOperation, projects, projectsLoading, rescanProjects, refreshEditors, editors, editorsLoading, navigate, view, setView } = useApp();
 	const actions = useActions();
 	const dialogs = useProjectDialogs();
+	const locked = unityInstall !== null;
 	const [query, setQuery] = useState("");
 	const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "modified", desc: true });
 	const [pendingRemove, setPendingRemove] = useState<ProjectInfo | null>(null);
@@ -78,7 +80,10 @@ export function ProjectsPage() {
 		setSort((current) => (current.key === key ? { key, desc: !current.desc } : { key, desc: key === "modified" || key === "favorite" }));
 	};
 
-	const menuFor = (project: ProjectInfo): MenuItem[] => [
+	const gated = (items: MenuItem[]): MenuItem[] =>
+		locked ? items.map((item) => (item.label === "Copy Path" || item.label === "Open Folder" ? item : { ...item, disabled: true })) : items;
+
+	const menuFor = (project: ProjectInfo): MenuItem[] => gated([
 		...(isLegacy(project) ? [{ label: "Manage Project", icon: "package" as const, disabled: !project.exists, onSelect: () => navigate({ page: "manage", path: project.path }) }] : []),
 		{ label: "Open With...", icon: "unity", disabled: !project.exists, onSelect: () => dialogs.openWith(project) },
 		{ label: "Launch Options...", icon: "settings", onSelect: () => dialogs.launchOptions(project) },
@@ -103,7 +108,7 @@ export function ProjectsPage() {
 				{ label: "Delete Project", icon: "trash", danger: true, disabled: !project.exists, onSelect: () => setPendingDelete(project) },
 			],
 		},
-	];
+	]);
 
 	const rowActions = (project: ProjectInfo) => {
 		const installed = hasEditor(project, editors);
@@ -112,18 +117,18 @@ export function ProjectsPage() {
 			<>
 				<Button
 					variant="primary"
-					disabled={!canOpen}
+					disabled={!canOpen || locked}
 					title={!project.exists ? "The project folder is missing" : !installed && !editorsLoading ? "Install this Unity version first" : undefined}
 					onClick={() => void actions.open(project)}
 				>
 					Open Project
 				</Button>
 				{isLegacy(project) ? (
-					<Button variant="success" icon="upload" disabled={!project.exists} onClick={() => dialogs.task(project, "vpm")}>
+					<Button variant="success" icon="upload" disabled={!project.exists || locked} onClick={() => dialogs.task(project, "vpm")}>
 						Migrate Project
 					</Button>
 				) : (
-					<Button disabled={!project.exists} onClick={() => navigate({ page: "manage", path: project.path })}>
+					<Button disabled={!project.exists || locked} onClick={() => navigate({ page: "manage", path: project.path })}>
 						Manage Project
 					</Button>
 				)}
@@ -150,6 +155,7 @@ export function ProjectsPage() {
 					{view === "list" ? "List View" : "Grid View"}
 				</Button>
 				<SplitButton
+					disabled={locked}
 					onClick={() => navigate({ page: "new" })}
 					items={[
 						{ label: "Add Existing Project", icon: "folderOpen", onSelect: () => void actions.addExisting() },
@@ -159,6 +165,7 @@ export function ProjectsPage() {
 					Create New Project
 				</SplitButton>
 			</header>
+			<UnityInstallNotice />
 
 			{projects.length === 0 && !projectsLoading ? (
 				<div className="card">

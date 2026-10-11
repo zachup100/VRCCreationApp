@@ -5,6 +5,7 @@ mod deeplink;
 mod download;
 mod editors;
 mod hosts;
+mod hub;
 mod limits;
 mod manifest;
 mod prefs;
@@ -65,6 +66,11 @@ pub fn run() {
             commands::unity::add_custom_editor,
             commands::unity::remove_custom_editor,
             commands::unity::open_external,
+            commands::install::unity_hub_status,
+            commands::install::recommended_editors,
+            commands::install::install_unity_hub,
+            commands::install::install_unity_editor,
+            commands::install::cancel_unity_install,
             commands::projects::list_projects,
             commands::projects::add_project,
             commands::projects::remove_project,

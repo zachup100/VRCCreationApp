@@ -1,0 +1,781 @@
+use crate::applog::log;
+use crate::editors;
+use crate::limits::check_host;
+use crate::prefs::Prefs;
+use crate::vpm::VpmContext;
+use base64::Engine;
+use reqwest::Url;
+use serde::Serialize;
+use sha2::{Digest, Sha512};
+use std::io::{BufRead, BufReader, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager};
+use tokio::sync::OwnedMutexGuard;
+
+const EVENT: &str = "unity-install";
+const FEED_URL: &str = "https://public-cdn.cloud.unity3d.com/hub/prod/latest.yml";
+const FEED_BASE: &str = "https://public-cdn.cloud.unity3d.com/hub/prod/";
+const MAX_FEED_BYTES: usize = 64 * 1024;
+const MAX_HUB_BYTES: u64 = 500 * 1024 * 1024;
+const FEED_TIMEOUT: Duration = Duration::from_secs(30);
+const EDITOR_LIMIT: Duration = Duration::from_secs(4 * 60 * 60);
+const SETUP_LIMIT: Duration = Duration::from_secs(15 * 60);
+const SIGNATURE_LIMIT: Duration = Duration::from_secs(60);
+const EMIT_INTERVAL: Duration = Duration::from_millis(150);
+const DECLINED_CODE: i32 = 1223;
+const LINE_LIMIT: usize = 200;
+const TAIL_LINES: usize = 6;
+
+const SIGNATURE_SCRIPT: &str = "$s = Get-AuthenticodeSignature -LiteralPath $env:VRCC_FILE; if ($s.Status -eq 'Valid' -and $s.SignerCertificate -ne $null -and $s.SignerCertificate.GetNameInfo('SimpleName', $false) -like 'Unity Technologies*') { exit 0 } else { exit 1 }";
+const SETUP_SCRIPT: &str = "$ErrorActionPreference = 'Stop'; try { $p = Start-Process -FilePath $env:VRCC_FILE -ArgumentList '/S' -Verb RunAs -Wait -PassThru; exit $p.ExitCode } catch { exit 1223 }";
+
+pub struct Recommended {
+    pub version: &'static str,
+    pub changeset: &'static str,
+    pub label: &'static str,
+    pub note: &'static str,
+}
+
+pub const RECOMMENDED: [Recommended; 2] = [
+    Recommended {
+        version: "2022.3.22f1",
+        changeset: "887be4894c44",
+        label: "Current VRChat version",
+        note: "Used for new worlds and avatars.",
+    },
+    Recommended {
+        version: "2019.4.31f1",
+        changeset: "bd5abf232a62",
+        label: "Legacy VRChat version",
+        note: "For older projects that have not been upgraded.",
+    },
+];
+
+pub fn recommended(version: &str) -> Option<&'static Recommended> {
+    RECOMMENDED.iter().find(|entry| entry.version == version)
+}
+
+pub fn can_install_hub() -> bool {
+    cfg!(windows)
+}
+
+fn hub_candidates() -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    if cfg!(windows) {
+        for variable in ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"] {
+            if let Some(base) = std::env::var_os(variable) {
+                found.push(PathBuf::from(base).join("Unity Hub").join("Unity Hub.exe"));
+            }
+        }
+        if let Some(base) = std::env::var_os("LOCALAPPDATA") {
+            found.push(
+                PathBuf::from(base)
+                    .join("Programs")
+                    .join("Unity Hub")
+                    .join("Unity Hub.exe"),
+            );
+        }
+    } else if cfg!(target_os = "macos") {
+        found.push(PathBuf::from("/Applications/Unity Hub.app/Contents/MacOS/Unity Hub"));
+    } else {
+        for path in ["/opt/unityhub/unityhub", "/usr/bin/unityhub", "/usr/local/bin/unityhub"] {
+            found.push(PathBuf::from(path));
+        }
+    }
+    found
+}
+
+pub fn find_hub() -> Option<PathBuf> {
+    hub_candidates().into_iter().find(|path| path.is_file())
+}
+
+pub fn editor_args(entry: &Recommended, android: bool) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "--",
+        "--headless",
+        "install",
+        "--version",
+        entry.version,
+        "--changeset",
+        entry.changeset,
+    ]
+    .iter()
+    .map(|part| part.to_string())
+    .collect();
+    if android {
+        args.extend(["--module", "android", "--childModules"].iter().map(|part| part.to_string()));
+    }
+    args
+}
+
+pub fn sanitize_line(line: &str) -> String {
+    let cleaned: String = line
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect();
+    cleaned.trim().chars().take(LINE_LIMIT).collect()
+}
+
+pub enum RunEnd {
+    Exited(Option<i32>),
+    Cancelled,
+    TimedOut,
+}
+
+pub fn run_streaming(
+    mut command: Command,
+    cancel: Option<&AtomicBool>,
+    limit: Duration,
+    mut on_line: impl FnMut(&str),
+) -> std::io::Result<RunEnd> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let (sender, receiver) = mpsc::channel::<String>();
+    if let Some(stdout) = child.stdout.take() {
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+    }
+    drop(sender);
+
+    let started = Instant::now();
+    loop {
+        match receiver.recv_timeout(Duration::from_millis(200)) {
+            Ok(line) => on_line(&line),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let status = child.wait()?;
+                return Ok(RunEnd::Exited(status.code()));
+            }
+        }
+        if cancel.map(|flag| flag.load(Ordering::SeqCst)).unwrap_or(false) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(RunEnd::Cancelled);
+        }
+        if started.elapsed() > limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(RunEnd::TimedOut);
+        }
+        if let Some(status) = child.try_wait()? {
+            while let Ok(line) = receiver.recv_timeout(Duration::from_millis(300)) {
+                on_line(&line);
+            }
+            return Ok(RunEnd::Exited(status.code()));
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct HubFeed {
+    pub path: String,
+    pub sha512: Vec<u8>,
+    pub size: u64,
+}
+
+fn valid_installer_path(path: &str) -> bool {
+    let mut parts = path.split('/');
+    let (Some(folder), Some(file), None) = (parts.next(), parts.next(), parts.next()) else {
+        return false;
+    };
+    let folder_ok = !folder.is_empty()
+        && folder.chars().all(|character| character.is_ascii_digit() || character == '.');
+    let file_ok = file.starts_with("UnityHubSetup-")
+        && file.ends_with(".exe")
+        && file
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '.' || character == '-');
+    folder_ok && file_ok
+}
+
+pub fn parse_feed(text: &str, arch: &str) -> Result<HubFeed, String> {
+    let mut entries: Vec<(String, Option<String>, Option<u64>)> = Vec::new();
+    for raw in text.lines() {
+        if !raw.starts_with(' ') {
+            continue;
+        }
+        let line = raw.trim();
+        if let Some(value) = line.strip_prefix("- url:") {
+            entries.push((value.trim().to_string(), None, None));
+        } else if let Some(value) = line.strip_prefix("sha512:") {
+            if let Some(last) = entries.last_mut() {
+                last.1 = Some(value.trim().to_string());
+            }
+        } else if let Some(value) = line.strip_prefix("size:") {
+            if let Some(last) = entries.last_mut() {
+                last.2 = value.trim().parse().ok();
+            }
+        }
+    }
+    let suffix = format!("-{arch}.exe");
+    let (path, hash, size) = entries
+        .into_iter()
+        .find(|(path, _, _)| path.ends_with(&suffix))
+        .ok_or_else(|| "Unity's download list has no installer for this computer".to_string())?;
+    if !valid_installer_path(&path) {
+        return Err("Unity's download list holds an unexpected address".to_string());
+    }
+    let size = size.ok_or_else(|| "Unity's download list has no file size".to_string())?;
+    if size == 0 || size > MAX_HUB_BYTES {
+        return Err("The Unity Hub installer has an unexpected size".to_string());
+    }
+    let sha512 = base64::engine::general_purpose::STANDARD
+        .decode(hash.ok_or_else(|| "Unity's download list has no checksum".to_string())?)
+        .ok()
+        .filter(|bytes| bytes.len() == 64)
+        .ok_or_else(|| "Unity's download list has an unreadable checksum".to_string())?;
+    Ok(HubFeed { path, sha512, size })
+}
+
+fn arch_suffix() -> &'static str {
+    if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else {
+        "x64"
+    }
+}
+
+pub enum Stop {
+    Cancelled,
+    Failed(String),
+}
+
+impl From<String> for Stop {
+    fn from(message: String) -> Self {
+        Stop::Failed(message)
+    }
+}
+
+impl From<&str> for Stop {
+    fn from(message: &str) -> Self {
+        Stop::Failed(message.to_string())
+    }
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct InstallEvent {
+    kind: &'static str,
+    phase: &'static str,
+    bytes: u64,
+    total: u64,
+    line: String,
+    version: String,
+    message: String,
+}
+
+pub struct Session {
+    app: AppHandle,
+    lock: Option<OwnedMutexGuard<()>>,
+    pub cancel: Arc<AtomicBool>,
+    kind: &'static str,
+    pub version: String,
+}
+
+impl Session {
+    pub fn begin(
+        app: &AppHandle,
+        vpm: &VpmContext,
+        kind: &'static str,
+        version: &str,
+    ) -> Result<Self, String> {
+        let lock = vpm.try_busy_owned()?;
+        vpm.installing.store(true, Ordering::SeqCst);
+        let cancel = Arc::new(AtomicBool::new(false));
+        if let Ok(mut slot) = vpm.install_cancel.lock() {
+            *slot = Some(cancel.clone());
+        }
+        let session = Self {
+            app: app.clone(),
+            lock: Some(lock),
+            cancel,
+            kind,
+            version: version.to_string(),
+        };
+        session.emit("starting", 0, 0, "");
+        Ok(session)
+    }
+
+    pub fn emit(&self, phase: &'static str, bytes: u64, total: u64, line: &str) {
+        let _ = self.app.emit(
+            EVENT,
+            InstallEvent {
+                kind: self.kind,
+                phase,
+                bytes,
+                total,
+                line: line.to_string(),
+                version: self.version.clone(),
+                message: String::new(),
+            },
+        );
+    }
+
+    fn release(&mut self) {
+        if self.lock.take().is_some() {
+            if let Some(vpm) = self.app.try_state::<VpmContext>() {
+                vpm.installing.store(false, Ordering::SeqCst);
+                if let Ok(mut slot) = vpm.install_cancel.lock() {
+                    *slot = None;
+                }
+            }
+        }
+    }
+
+    pub fn end(mut self, result: Result<(), Stop>) {
+        self.release();
+        let (phase, message, level) = match result {
+            Ok(()) => (
+                "finished",
+                if self.kind == "hub" {
+                    "Unity Hub is installed".to_string()
+                } else {
+                    format!("Unity {} is installed", self.version)
+                },
+                "info",
+            ),
+            Err(Stop::Cancelled) => ("cancelled", "The install was cancelled".to_string(), "info"),
+            Err(Stop::Failed(message)) => ("failed", message, "warning"),
+        };
+        log(&self.app, level, message.clone());
+        let _ = self.app.emit(
+            EVENT,
+            InstallEvent {
+                kind: self.kind,
+                phase,
+                bytes: 0,
+                total: 0,
+                line: String::new(),
+                version: self.version.clone(),
+                message,
+            },
+        );
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+pub fn request_cancel(vpm: &VpmContext) -> bool {
+    match vpm.install_cancel.lock() {
+        Ok(slot) => match slot.as_ref() {
+            Some(flag) => {
+                flag.store(true, Ordering::SeqCst);
+                true
+            }
+            None => false,
+        },
+        Err(_) => false,
+    }
+}
+
+pub async fn run_editor_install(session: Session, android: bool) {
+    let result = editor_install(&session, android).await;
+    session.end(result);
+}
+
+async fn editor_install(session: &Session, android: bool) -> Result<(), Stop> {
+    let entry = recommended(&session.version).ok_or("That version is not on the recommended list")?;
+    let hub = find_hub().ok_or("Unity Hub was not found")?;
+    log(
+        &session.app,
+        "info",
+        format!("Installing Unity {} through Unity Hub", entry.version),
+    );
+    session.emit("installing", 0, 0, "Starting Unity Hub");
+
+    let mut command = Command::new(&hub);
+    command.args(editor_args(entry, android));
+    hide_window(&mut command);
+
+    let cancel = session.cancel.clone();
+    let app = session.app.clone();
+    let version = session.version.clone();
+    let (outcome, tail) = tokio::task::spawn_blocking(move || {
+        let mut tail: Vec<String> = Vec::new();
+        let mut last = Instant::now() - EMIT_INTERVAL;
+        let outcome = run_streaming(command, Some(&cancel), EDITOR_LIMIT, |raw| {
+            let line = sanitize_line(raw);
+            if line.is_empty() {
+                return;
+            }
+            if tail.len() == TAIL_LINES {
+                tail.remove(0);
+            }
+            tail.push(line.clone());
+            if last.elapsed() >= EMIT_INTERVAL {
+                last = Instant::now();
+                let _ = app.emit(
+                    EVENT,
+                    InstallEvent {
+                        kind: "editor",
+                        phase: "installing",
+                        bytes: 0,
+                        total: 0,
+                        line,
+                        version: version.clone(),
+                        message: String::new(),
+                    },
+                );
+            }
+        });
+        (outcome, tail)
+    })
+    .await
+    .map_err(|_| "The install stopped unexpectedly")?;
+
+    match outcome {
+        Err(error) => return Err(Stop::Failed(format!("Could not start Unity Hub: {error}"))),
+        Ok(RunEnd::Cancelled) => return Err(Stop::Cancelled),
+        Ok(RunEnd::TimedOut) => return Err("The install took too long and was stopped".into()),
+        Ok(RunEnd::Exited(Some(0))) => {}
+        Ok(RunEnd::Exited(code)) => {
+            return Err(Stop::Failed(failure_text(
+                &format!(
+                    "Unity Hub stopped with code {}",
+                    code.map(|value| value.to_string()).unwrap_or_else(|| "unknown".to_string())
+                ),
+                &tail,
+            )))
+        }
+    }
+
+    let prefs = session.app.state::<Mutex<Prefs>>();
+    let listed = editors::all(&prefs)
+        .await
+        .map(|found| found.iter().any(|editor| editor.version == session.version))
+        .unwrap_or(false);
+    if !listed {
+        return Err(Stop::Failed(failure_text(
+            &format!(
+                "Unity Hub finished, but Unity {} is not listed yet. Rescan in a moment",
+                session.version
+            ),
+            &tail,
+        )));
+    }
+    Ok(())
+}
+
+fn failure_text(headline: &str, tail: &[String]) -> String {
+    match tail.last() {
+        Some(last) => format!("{headline}. Unity Hub said: {last}"),
+        None => format!("{headline}."),
+    }
+}
+
+pub async fn run_hub_install(session: Session) {
+    let folder = session
+        .app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|base| base.join("hub-installer"));
+    let result = match &folder {
+        Some(folder) => {
+            let _ = std::fs::remove_dir_all(folder);
+            let result = hub_install(&session, folder).await;
+            let _ = std::fs::remove_dir_all(folder);
+            result
+        }
+        None => Err(Stop::Failed("The app data folder is unavailable".to_string())),
+    };
+    session.end(result);
+}
+
+async fn hub_install(session: &Session, folder: &Path) -> Result<(), Stop> {
+    let vpm = session.app.state::<VpmContext>();
+    log(&session.app, "info", "Installing Unity Hub".to_string());
+    session.emit("downloading", 0, 0, "Checking the latest Unity Hub");
+
+    let feed_text = fetch_feed(&vpm).await?;
+    let feed = parse_feed(&feed_text, arch_suffix())?;
+    let file_name = feed.path.rsplit('/').next().unwrap_or("UnityHubSetup.exe").to_string();
+
+    std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
+    let setup = folder.join(&file_name);
+    download_setup(session, &vpm, &feed, &setup).await?;
+
+    session.emit("verifying", feed.size, feed.size, "Checking the installer");
+    let target = setup.clone();
+    let signed = tokio::task::spawn_blocking(move || verify_signature(&target))
+        .await
+        .map_err(|_| "The signature check stopped unexpectedly")?;
+    signed?;
+
+    session.emit("installing", 0, 0, "Waiting for the Unity Hub installer");
+    let target = setup.clone();
+    let code = tokio::task::spawn_blocking(move || run_setup(&target))
+        .await
+        .map_err(|_| "The installer stopped unexpectedly")??;
+    match code {
+        0 => {}
+        DECLINED_CODE => {
+            return Err("Windows did not get permission to install Unity Hub. Try again and accept the prompt.".into())
+        }
+        other => return Err(Stop::Failed(format!("The Unity Hub installer stopped with code {other}"))),
+    }
+    if find_hub().is_none() {
+        return Err("The installer finished, but Unity Hub was not found afterwards".into());
+    }
+    Ok(())
+}
+
+async fn fetch_feed(vpm: &VpmContext) -> Result<String, Stop> {
+    let url = Url::parse(FEED_URL).map_err(|error| error.to_string())?;
+    check_host(&url, vpm.private_hosts_blocked())
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut response = vpm
+        .http
+        .get(url)
+        .timeout(FEED_TIMEOUT)
+        .send()
+        .await
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| format!("Could not reach Unity's download list: {error}"))?;
+    let mut body: Vec<u8> = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
+        if body.len() + chunk.len() > MAX_FEED_BYTES {
+            return Err("Unity's download list is too large".into());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    String::from_utf8(body).map_err(|_| Stop::Failed("Unity's download list is unreadable".to_string()))
+}
+
+async fn download_setup(
+    session: &Session,
+    vpm: &VpmContext,
+    feed: &HubFeed,
+    destination: &Path,
+) -> Result<(), Stop> {
+    let url = Url::parse(&format!("{FEED_BASE}{}", feed.path)).map_err(|error| error.to_string())?;
+    check_host(&url, vpm.private_hosts_blocked())
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut response = vpm
+        .http
+        .get(url)
+        .send()
+        .await
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| format!("Could not download Unity Hub: {error}"))?;
+    let mut file = std::fs::File::create(destination).map_err(|error| error.to_string())?;
+    let mut hasher = Sha512::new();
+    let mut bytes = 0u64;
+    let mut last = Instant::now() - EMIT_INTERVAL;
+    while let Some(chunk) = response.chunk().await.map_err(|error| error.to_string())? {
+        if session.cancel.load(Ordering::SeqCst) {
+            return Err(Stop::Cancelled);
+        }
+        bytes += chunk.len() as u64;
+        if bytes > feed.size {
+            return Err("The Unity Hub download is larger than expected".into());
+        }
+        hasher.update(&chunk);
+        file.write_all(&chunk).map_err(|error| error.to_string())?;
+        if last.elapsed() >= EMIT_INTERVAL {
+            last = Instant::now();
+            session.emit("downloading", bytes, feed.size, "Downloading Unity Hub");
+        }
+    }
+    file.sync_all().map_err(|error| error.to_string())?;
+    if bytes != feed.size {
+        return Err("The Unity Hub download was incomplete".into());
+    }
+    if hasher.finalize().as_slice() != feed.sha512.as_slice() {
+        return Err("The Unity Hub download did not match its checksum and was deleted".into());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn hide_window(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(0x0800_0000);
+}
+
+#[cfg(not(windows))]
+fn hide_window(_command: &mut Command) {}
+
+fn powershell(script: &str, file: &Path) -> Command {
+    let mut command = Command::new("powershell.exe");
+    command
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .env("VRCC_FILE", file);
+    hide_window(&mut command);
+    command
+}
+
+fn verify_signature(file: &Path) -> Result<(), Stop> {
+    if !cfg!(windows) {
+        return Err("Installing Unity Hub is only supported on Windows".into());
+    }
+    match run_streaming(powershell(SIGNATURE_SCRIPT, file), None, SIGNATURE_LIMIT, |_| {}) {
+        Ok(RunEnd::Exited(Some(0))) => Ok(()),
+        Ok(RunEnd::Exited(_)) => Err("The Unity Hub installer is not signed by Unity Technologies and was not run".into()),
+        Ok(_) => Err("The signature check took too long, so the installer was not run".into()),
+        Err(error) => Err(Stop::Failed(format!("Could not check the installer signature: {error}"))),
+    }
+}
+
+fn run_setup(file: &Path) -> Result<i32, Stop> {
+    if !cfg!(windows) {
+        return Err("Installing Unity Hub is only supported on Windows".into());
+    }
+    match run_streaming(powershell(SETUP_SCRIPT, file), None, SETUP_LIMIT, |_| {}) {
+        Ok(RunEnd::Exited(Some(code))) => Ok(code),
+        Ok(RunEnd::Exited(None)) => Err("The Unity Hub installer ended unexpectedly".into()),
+        Ok(_) => Err("The Unity Hub installer took too long".into()),
+        Err(error) => Err(Stop::Failed(format!("Could not start the Unity Hub installer: {error}"))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FEED: &str = "version: 3.22.2\nfiles:\n  - url: 3.22.2/UnityHubSetup-3.22.2-x64.exe\n    sha512: EWyODdFc2c4AzBm8y3pNopoLL+p2DZQE8yI+lzaJ+fTMKH/mMLlZMgXw4/VZ0YgCyHD/Ai6ebP0OTOEiwDOEdA==\n    size: 193623232\n  - url: 3.22.2/UnityHubSetup-3.22.2-arm64.exe\n    sha512: xS9wBSrgc7owknRp9ugLhdFNviHvCPrIIaTKseIKPKgtrWbZCBufzBk/G3VxdiyYF5CkTU1xXDMhOnFzVdiirw==\n    size: 184024664\nreleaseDate: 2026-10-02T20:18:59.543Z\nsha512: ignored\n";
+
+    #[test]
+    fn the_feed_gives_the_installer_for_each_architecture() {
+        let x64 = parse_feed(FEED, "x64").unwrap();
+        assert_eq!(x64.path, "3.22.2/UnityHubSetup-3.22.2-x64.exe");
+        assert_eq!(x64.size, 193623232);
+        assert_eq!(x64.sha512.len(), 64);
+        let arm = parse_feed(FEED, "arm64").unwrap();
+        assert_eq!(arm.path, "3.22.2/UnityHubSetup-3.22.2-arm64.exe");
+    }
+
+    #[test]
+    fn a_feed_without_the_architecture_is_rejected() {
+        assert!(parse_feed(FEED, "riscv").is_err());
+    }
+
+    #[test]
+    fn unexpected_installer_addresses_are_rejected() {
+        for path in [
+            "../evil/UnityHubSetup-1.0-x64.exe",
+            "3.22.2/../UnityHubSetup-3.22.2-x64.exe",
+            "https://evil.com/UnityHubSetup-3.22.2-x64.exe",
+            "3.22.2/other.exe",
+            "3.22.2/UnityHubSetup-3.22.2-x64.exe/extra",
+            "UnityHubSetup-3.22.2-x64.exe",
+            "3.22.2\\UnityHubSetup-3.22.2-x64.exe",
+        ] {
+            let text = format!("files:\n  - url: {path}\n    sha512: {}\n    size: 100\n", "A".repeat(86) + "==");
+            assert!(parse_feed(&text, "x64").is_err(), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_bad_size_or_checksum_is_rejected() {
+        let hash = base64::engine::general_purpose::STANDARD.encode([1u8; 64]);
+        let ok = format!("files:\n  - url: 3.0/UnityHubSetup-3.0-x64.exe\n    sha512: {hash}\n    size: 100\n");
+        assert!(parse_feed(&ok, "x64").is_ok());
+        let too_big = ok.replace("size: 100", &format!("size: {}", MAX_HUB_BYTES + 1));
+        assert!(parse_feed(&too_big, "x64").is_err());
+        let zero = ok.replace("size: 100", "size: 0");
+        assert!(parse_feed(&zero, "x64").is_err());
+        let short = ok.replace(&hash, "AAAA");
+        assert!(parse_feed(&short, "x64").is_err());
+        let missing = "files:\n  - url: 3.0/UnityHubSetup-3.0-x64.exe\n";
+        assert!(parse_feed(missing, "x64").is_err());
+    }
+
+    #[test]
+    fn only_listed_versions_are_installable() {
+        assert!(recommended("2022.3.22f1").is_some());
+        assert!(recommended("2019.4.31f1").is_some());
+        assert!(recommended("2022.3.22f1 --evil").is_none());
+        assert!(recommended("6000.0.0f1").is_none());
+    }
+
+    #[test]
+    fn editor_arguments_come_from_the_list() {
+        let entry = recommended("2022.3.22f1").unwrap();
+        let plain = editor_args(entry, false);
+        assert_eq!(
+            plain,
+            ["--", "--headless", "install", "--version", "2022.3.22f1", "--changeset", "887be4894c44"]
+        );
+        let android = editor_args(entry, true);
+        assert_eq!(&android[plain.len()..], ["--module", "android", "--childModules"]);
+    }
+
+    #[test]
+    fn output_lines_are_cleaned_and_shortened() {
+        assert_eq!(sanitize_line("  \u{1b}[32mhello\u{7}  "), "[32mhello");
+        assert_eq!(sanitize_line(&"x".repeat(500)).len(), LINE_LIMIT);
+        assert_eq!(sanitize_line("\r\n"), "");
+    }
+
+    #[cfg(unix)]
+    fn shell(script: &str) -> Command {
+        let mut command = Command::new("sh");
+        command.args(["-c", script]);
+        command
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn output_lines_and_the_exit_code_are_reported() {
+        let mut lines = Vec::new();
+        let end = run_streaming(shell("echo one; echo two >&2; exit 3"), None, Duration::from_secs(10), |line| {
+            lines.push(line.to_string())
+        })
+        .unwrap();
+        assert!(matches!(end, RunEnd::Exited(Some(3))));
+        lines.sort();
+        assert_eq!(lines, ["one", "two"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_cancelled_run_is_stopped() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let setter = flag.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            setter.store(true, Ordering::SeqCst);
+        });
+        let started = Instant::now();
+        let end = run_streaming(shell("sleep 30"), Some(&flag), Duration::from_secs(60), |_| {}).unwrap();
+        assert!(matches!(end, RunEnd::Cancelled));
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_run_past_its_limit_is_stopped() {
+        let end = run_streaming(shell("sleep 30"), None, Duration::from_millis(300), |_| {}).unwrap();
+        assert!(matches!(end, RunEnd::TimedOut));
+    }
+}

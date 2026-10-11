@@ -18,7 +18,9 @@ pub struct VpmContext {
     pub http: reqwest::Client,
     pub block_private_hosts: Arc<AtomicBool>,
     pub lock: Mutex<()>,
-    pub ops: Mutex<()>,
+    pub ops: Arc<Mutex<()>>,
+    pub installing: AtomicBool,
+    pub install_cancel: std::sync::Mutex<Option<Arc<AtomicBool>>>,
     collection: Mutex<Option<Arc<PackageCollection>>>,
 }
 
@@ -47,7 +49,9 @@ impl VpmContext {
             http,
             block_private_hosts,
             lock: Mutex::new(()),
-            ops: Mutex::new(()),
+            ops: Arc::new(Mutex::new(())),
+            installing: AtomicBool::new(false),
+            install_cancel: std::sync::Mutex::new(None),
             collection: Mutex::new(None),
         })
     }
@@ -66,10 +70,21 @@ impl VpmContext {
     }
 
     pub fn try_busy(&self) -> Result<tokio::sync::MutexGuard<'_, ()>, String> {
-        self.ops.try_lock().map_err(|_| {
+        self.ops.try_lock().map_err(|_| self.busy_message())
+    }
+
+    pub fn try_busy_owned(&self) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+        self.ops.clone().try_lock_owned().map_err(|_| self.busy_message())
+    }
+
+    fn busy_message(&self) -> String {
+        if self.installing.load(Ordering::SeqCst) {
+            "A Unity install is in progress. Wait for it to finish before opening or changing projects."
+                .to_string()
+        } else {
             "A package change is in progress. Wait for it to finish before making other changes."
                 .to_string()
-        })
+        }
     }
 
     pub async fn invalidate(&self) {
