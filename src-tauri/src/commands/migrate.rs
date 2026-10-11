@@ -17,6 +17,7 @@ use vrc_get_vpm::{ProjectType, UnityProject, VRCHAT_RECOMMENDED_2022_UNITY};
 const EVENT: &str = "project-task";
 pub(crate) const BACKUP_MARKER: &str = "VRCCreationApp";
 pub(crate) const LEGACY_BACKUP_MARKER: &str = "VRCreationApp";
+const PARTIAL_SUFFIX: &str = ".vrcc-partial";
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -186,6 +187,31 @@ pub(crate) fn write_backup(
     }
 }
 
+pub(crate) fn remove_stale_partials(directory: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.filter_map(Result::ok) {
+        let is_file = entry.file_type().map(|kind| kind.is_file()).unwrap_or(false);
+        let named = entry.file_name().to_string_lossy().ends_with(PARTIAL_SUFFIX);
+        if is_file && named && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+pub(crate) fn finish_backup(temp: &Path, target: &Path) -> Result<(), String> {
+    if target.is_file() {
+        std::fs::remove_file(target).map_err(|error| format!("Could not replace the earlier backup: {error}"))?;
+    }
+    std::fs::rename(temp, target).map_err(|error| {
+        let _ = std::fs::remove_file(temp);
+        format!("Could not finish the backup: {error}")
+    })
+}
+
 async fn create_backup(
     app: &AppHandle,
     project: &Path,
@@ -208,6 +234,7 @@ async fn create_backup(
         .unwrap_or_else(|| "project".to_string());
     let stamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
     let target = directory.join(format!("{name}-{stamp}.zip"));
+    let temp = directory.join(format!("{name}-{stamp}.zip{PARTIAL_SUFFIX}"));
 
     let (unity_version, category) = match load_project(&project.to_string_lossy()).await {
         Ok(loaded) => (
@@ -220,9 +247,14 @@ async fn create_backup(
     emit(app, TaskProgress::Phase { name: "backup" });
     let handle = app.clone();
     let source = project.to_path_buf();
+    let folder = directory.clone();
     tokio::task::spawn_blocking(move || {
+        remove_stale_partials(&folder);
         let mut report = |done: usize, total: usize| emit(&handle, TaskProgress::Backup { done, total });
-        write_backup(&mut report, &source, &target, unity_version, category)
+        let mut result = write_backup(&mut report, &source, &temp, unity_version, category)?;
+        finish_backup(&temp, &target)?;
+        result.path = target.to_string_lossy().into_owned();
+        Ok(result)
     })
         .await
         .map_err(|_| "The backup was interrupted".to_string())?
@@ -479,6 +511,31 @@ mod tests {
         assert_eq!(meta.unity_version.as_deref(), Some("2022.3.22f1"));
         assert!(archive.by_name("My Project/Assets/a.txt").is_ok());
         assert!(archive.by_name("My Project/Library/cache.bin").is_err());
+    }
+
+    #[test]
+    fn only_files_with_the_partial_suffix_are_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("A-2026-01-01_00-00-00.zip.vrcc-partial"), "x").unwrap();
+        std::fs::write(dir.path().join("B.zip"), "x").unwrap();
+        std::fs::write(dir.path().join("notes.partial"), "x").unwrap();
+        std::fs::create_dir(dir.path().join("keep.vrcc-partial")).unwrap();
+        assert_eq!(remove_stale_partials(dir.path()), 1);
+        assert!(dir.path().join("B.zip").exists());
+        assert!(dir.path().join("notes.partial").exists());
+        assert!(dir.path().join("keep.vrcc-partial").is_dir());
+    }
+
+    #[test]
+    fn a_finished_backup_appears_under_its_final_name_and_replaces_an_older_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join("P-1.zip.vrcc-partial");
+        let target = dir.path().join("P-1.zip");
+        std::fs::write(&target, "old").unwrap();
+        std::fs::write(&temp, "new").unwrap();
+        finish_backup(&temp, &target).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        assert!(!temp.exists());
     }
 
     #[test]
