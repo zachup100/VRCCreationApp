@@ -1,6 +1,5 @@
 use crate::applog::{log, project_label};
 use crate::commands::projects::{category_of, detect_type};
-use crate::download::ProgressHttp;
 use crate::prefs::Prefs;
 use crate::store::ProjectStore;
 use crate::vpm::VpmContext;
@@ -354,7 +353,7 @@ pub async fn migrate_project(
 
     emit(&app, TaskProgress::Phase { name: "packages" });
     let collection = vpm.collection(false).await?;
-    let http = ProgressHttp::new(vpm.http.clone(), app.clone());
+    let http = vpm.progress_http(app.clone());
     let installer = PackageInstaller::new(&vpm.io, Some(&http));
     match kind {
         MigrationKind::Vpm => project

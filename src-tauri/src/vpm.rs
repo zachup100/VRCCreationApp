@@ -1,5 +1,6 @@
 use crate::hosts;
-use crate::limits::LimitedHttp;
+use crate::download::ProgressHttp;
+use crate::limits::{remove_incomplete_zips, LimitedHttp};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -51,6 +52,15 @@ impl VpmContext {
         })
     }
 
+    pub fn limited_http(&self) -> LimitedHttp<'_> {
+        LimitedHttp::new(&self.http, self.private_hosts_blocked())
+    }
+
+    pub fn progress_http(&self, app: tauri::AppHandle) -> ProgressHttp {
+        remove_incomplete_zips(&self.io.resolve(std::path::Path::new("Repos")));
+        ProgressHttp::new(self.http.clone(), app, self.private_hosts_blocked())
+    }
+
     pub fn private_hosts_blocked(&self) -> bool {
         self.block_private_hosts.load(Ordering::Relaxed)
     }
@@ -93,7 +103,7 @@ impl VpmContext {
 
         let collection = match loaded {
             Some(collection) => collection,
-            None => PackageCollection::load(&settings, &self.io, Some(&LimitedHttp::new(&self.http)))
+            None => PackageCollection::load(&settings, &self.io, Some(&self.limited_http()))
                 .await
                 .map_err(|error| format!("Could not load packages: {error}"))?,
         };

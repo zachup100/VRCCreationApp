@@ -1,6 +1,6 @@
 use crate::applog::log;
 use crate::hosts::ensure_allowed;
-use crate::limits::{read_capped, LimitedHttp, REPOSITORY_TIMEOUT};
+use crate::limits::{read_capped, REPOSITORY_TIMEOUT};
 use crate::prefs::Prefs;
 use crate::vpm::{VpmContext, CURATED_ID, LOCAL_USER_ID, OFFICIAL_ID};
 use indexmap::IndexMap;
@@ -355,7 +355,7 @@ pub async fn repository_add(
     let mut settings = Settings::load(&vpm.io)
         .await
         .map_err(|error| format!("Could not read repository settings: {error}"))?;
-    add_remote_repo(&mut settings, parsed, None, header_map(&headers)?, &vpm.io, &LimitedHttp::new(&vpm.http))
+    add_remote_repo(&mut settings, parsed, None, header_map(&headers)?, &vpm.io, &vpm.limited_http())
         .await
         .map_err(|error| format!("Could not add the repository: {error}"))?;
     settings
@@ -428,7 +428,7 @@ pub async fn repository_update(
             return Err("The repository list changed. Refresh and try again.".to_string());
         }
         settings.remove_repo_at_index(index);
-        add_remote_repo(&mut settings, parsed, None, header_values, &vpm.io, &LimitedHttp::new(&vpm.http))
+        add_remote_repo(&mut settings, parsed, None, header_values, &vpm.io, &vpm.limited_http())
             .await
             .map_err(|error| format!("Could not update the repository: {error}"))?;
         let last = count
@@ -599,7 +599,7 @@ pub async fn import_packages_from_vcc(
                         candidate.name.as_deref(),
                         candidate.headers,
                         &vpm.io,
-                        &LimitedHttp::new(&vpm.http),
+                        &vpm.limited_http(),
                     )
                     .await;
                     match outcome {

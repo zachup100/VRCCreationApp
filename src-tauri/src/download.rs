@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
+use crate::limits::{check_host, CappedRead, MAX_PACKAGE_BYTES, PACKAGE_TOO_LARGE_MESSAGE};
 use vrc_get_vpm::HttpClient;
 
 const EVENT: &str = "download-progress";
@@ -26,10 +27,11 @@ pub struct ProgressHttp {
     client: reqwest::Client,
     app: AppHandle,
     total: Arc<AtomicU64>,
+    block_private: bool,
 }
 
 impl ProgressHttp {
-    pub fn new(client: reqwest::Client, app: AppHandle) -> Self {
+    pub fn new(client: reqwest::Client, app: AppHandle, block_private: bool) -> Self {
         let _ = app.emit(
             EVENT,
             DownloadProgress {
@@ -41,10 +43,12 @@ impl ProgressHttp {
             client,
             app,
             total: Arc::new(AtomicU64::new(0)),
+            block_private,
         }
     }
 
-    fn wrap<R: AsyncRead>(&self, url: &Url, inner: R) -> CountingRead<R> {
+    fn wrap<R: AsyncRead>(&self, url: &Url, inner: R) -> CountingRead<CappedRead<R>> {
+        let inner = CappedRead::new(inner, MAX_PACKAGE_BYTES, Duration::MAX, PACKAGE_TOO_LARGE_MESSAGE);
         let name = url
             .path_segments()
             .and_then(|mut segments| segments.next_back())
@@ -103,6 +107,7 @@ impl HttpClient for ProgressHttp {
         url: &Url,
         headers: &IndexMap<&str, &str>,
     ) -> io::Result<impl AsyncRead + Send> {
+        check_host(url, self.block_private).await?;
         let stream = HttpClient::get(&self.client, url, headers).await?;
         Ok(self.wrap(url, stream))
     }
@@ -113,6 +118,7 @@ impl HttpClient for ProgressHttp {
         headers: &IndexMap<Box<str>, Box<str>>,
         current_etag: Option<&str>,
     ) -> io::Result<Option<(impl AsyncRead + Send, Option<Box<str>>)>> {
+        check_host(url, self.block_private).await?;
         let response = HttpClient::get_with_etag(&self.client, url, headers, current_etag).await?;
         Ok(response.map(|(stream, etag)| (self.wrap(url, stream), etag)))
     }

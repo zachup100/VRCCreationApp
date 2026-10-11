@@ -411,7 +411,7 @@ pub async fn create_project(
         Err(error) => return Err(format!("Could not create the project folder: {error}")),
     }
 
-    let http = ProgressHttp::new(vpm.http.clone(), app.clone());
+    let http = vpm.progress_http(app.clone());
     let mut project = match build_project(template, &name, &target, &vpm, &http).await {
         Ok(project) => project,
         Err(message) => {
