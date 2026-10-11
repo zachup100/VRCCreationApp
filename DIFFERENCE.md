@@ -66,3 +66,7 @@ This page lists what it adds, what works differently, and what the Creator Compa
 - Official and curated package repositories, plus community repositories, including ones that need authentication headers, which you can edit after adding.
 - Migrate legacy SDK3 projects to the VPM format and upgrade Unity 2019 projects to Unity 2022.
 - Learning links to VRChat's documentation.
+
+---
+
+This comparison may be incomplete or out of date. VCC changes over time, and some of its features may not be covered here. If you spot something missing or wrong, please open an issue on GitHub.
