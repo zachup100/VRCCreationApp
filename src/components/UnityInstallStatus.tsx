@@ -76,8 +76,13 @@ export function UnityInstallStatus({ install }: { install: UnityInstall }) {
 				<div className="progress-fill" style={percent === null ? undefined : { width: `${percent}%` }} />
 			</div>
 			<span className="muted install-detail">{detail(install, percent)}</span>
-			{install.kind === "editor" && settings.unityDownloadLimit > 0 && (
-				<span className="muted install-detail">Download speed limit: {limitLabel(settings.unityDownloadLimit)}</span>
+			{install.notice ? (
+				<span className="install-detail install-notice">{install.notice}</span>
+			) : (
+				install.kind === "editor" &&
+				settings.unityDownloadLimit > 0 && (
+					<span className="muted install-detail">Download speed limit: {limitLabel(settings.unityDownloadLimit)}</span>
+				)
 			)}
 		</div>
 	);

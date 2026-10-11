@@ -13,7 +13,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
@@ -30,6 +30,8 @@ const SETUP_LIMIT: Duration = Duration::from_secs(15 * 60);
 const SIGNATURE_LIMIT: Duration = Duration::from_secs(60);
 const EMIT_INTERVAL: Duration = Duration::from_millis(150);
 const DECLINED_CODE: i32 = 1223;
+const PROXY_IN_USE_NOTICE: &str = "The download speed limit was not applied because this computer already uses a proxy. Unity Hub is downloading at full speed.";
+const LIMIT_IGNORED_NOTICE: &str = "The download speed limit is not being applied. Unity Hub is downloading at full speed.";
 const LINE_LIMIT: usize = 200;
 const TAIL_LINES: usize = 6;
 
@@ -176,8 +178,14 @@ pub struct Progress {
     items: Vec<(String, f64)>,
 }
 
+pub struct Update {
+    pub text: String,
+    pub downloading: bool,
+    pub percent: Option<f64>,
+}
+
 impl Progress {
-    pub fn update(&mut self, line: &str) -> Option<String> {
+    pub fn update(&mut self, line: &str) -> Option<Update> {
         let (name, status, percent) = parse_status(line)?;
         let index = match self.items.iter().position(|(known, _)| *known == name) {
             Some(index) => index,
@@ -189,7 +197,11 @@ impl Progress {
         if let Some(value) = percent {
             self.items[index].1 = value;
         }
-        Some(format!("{name}: {status}"))
+        Some(Update {
+            text: format!("{name}: {status}"),
+            downloading: status.to_ascii_lowercase().contains("download"),
+            percent,
+        })
     }
 
     pub fn percent(&self) -> u32 {
@@ -199,6 +211,48 @@ impl Progress {
         let total: f64 = self.items.iter().map(|(_, value)| value).sum();
         ((total / self.items.len() as f64).floor() as u32).min(99)
     }
+}
+
+pub fn proxy_in_environment(get: impl Fn(&str) -> Option<String>) -> bool {
+    [
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "all_proxy",
+    ]
+    .iter()
+    .any(|name| get(name).map(|value| !value.trim().is_empty()).unwrap_or(false))
+}
+
+#[cfg(windows)]
+fn system_proxy_configured() -> bool {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+    let Ok(key) = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Internet Settings")
+    else {
+        return false;
+    };
+    let enabled = key
+        .get_value::<u32, _>("ProxyEnable")
+        .map(|value| value == 1)
+        .unwrap_or(false);
+    let script = key
+        .get_value::<String, _>("AutoConfigURL")
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    enabled || script
+}
+
+#[cfg(not(windows))]
+fn system_proxy_configured() -> bool {
+    false
+}
+
+pub fn proxy_configured() -> bool {
+    proxy_in_environment(|name| std::env::var(name).ok()) || system_proxy_configured()
 }
 
 pub fn system_tool(relative: &str) -> Option<PathBuf> {
@@ -400,6 +454,7 @@ struct InstallEvent {
     total: u64,
     line: String,
     version: String,
+    notice: String,
     message: String,
 }
 
@@ -409,6 +464,7 @@ pub struct Session {
     pub cancel: Arc<AtomicBool>,
     kind: &'static str,
     pub version: String,
+    notice: Mutex<String>,
     finished: bool,
 }
 
@@ -447,6 +503,7 @@ impl Session {
             cancel,
             kind,
             version: version.to_string(),
+            notice: Mutex::new(String::new()),
             finished: false,
         };
         session.emit("starting", 0, 0, "");
@@ -463,9 +520,21 @@ impl Session {
                 total,
                 line: line.to_string(),
                 version: self.version.clone(),
+                notice: self.notice(),
                 message: String::new(),
             },
         );
+    }
+
+    pub fn notice(&self) -> String {
+        self.notice.lock().map(|guard| guard.clone()).unwrap_or_default()
+    }
+
+    pub fn set_notice(&self, text: &str) {
+        if let Ok(mut guard) = self.notice.lock() {
+            *guard = text.to_string();
+        }
+        log(&self.app, "warning", text.to_string());
     }
 
     fn release(&mut self) {
@@ -496,6 +565,7 @@ impl Session {
                 total: 0,
                 line: String::new(),
                 version: self.version.clone(),
+                notice: String::new(),
                 message,
             },
         );
@@ -552,7 +622,11 @@ async fn editor_install(session: &Session, android: bool, ios: bool) -> Result<(
             0
         }
     };
-    let throttle = if limit > 0 {
+    let proxied = limit > 0 && proxy_configured();
+    if proxied {
+        session.set_notice(PROXY_IN_USE_NOTICE);
+    }
+    let throttle = if limit > 0 && !proxied {
         let blocked = session.app.state::<VpmContext>().private_hosts_blocked();
         let config = Config::unity(limit as u64 * BYTES_PER_MEGABYTE, blocked);
         Some(
@@ -579,7 +653,10 @@ async fn editor_install(session: &Session, android: bool, ios: bool) -> Result<(
     let cancel = session.cancel.clone();
     let app = session.app.clone();
     let version = session.version.clone();
+    let counter: Option<Arc<AtomicU64>> = throttle.as_ref().map(|proxy| proxy.counter());
+    let mut notice = session.notice();
     let (outcome, tail) = tokio::task::spawn_blocking(move || {
+        let mut warned = false;
         let mut tail: Vec<String> = Vec::new();
         let mut progress = Progress::default();
         let mut shown = String::new();
@@ -590,7 +667,19 @@ async fn editor_install(session: &Session, android: bool, ios: bool) -> Result<(
                 return;
             }
             match progress.update(&line) {
-                Some(status) => shown = status,
+                Some(update) => {
+                    if let (Some(counter), false, true, Some(value)) =
+                        (&counter, warned, update.downloading, update.percent)
+                    {
+                        if value >= 2.0 && counter.load(Ordering::Relaxed) == 0 {
+                            warned = true;
+                            notice = LIMIT_IGNORED_NOTICE.to_string();
+                            log(&app, "warning", notice.clone());
+                            last = Instant::now() - EMIT_INTERVAL;
+                        }
+                    }
+                    shown = update.text;
+                }
                 None => {
                     if line.ends_with(':') {
                         return;
@@ -614,6 +703,7 @@ async fn editor_install(session: &Session, android: bool, ios: bool) -> Result<(
                         total: if percent > 0 { 100 } else { 0 },
                         line: shown.clone(),
                         version: version.clone(),
+                        notice: notice.clone(),
                         message: String::new(),
                     },
                 );
@@ -946,9 +1036,14 @@ mod tests {
     fn overall_progress_averages_every_item_and_stays_below_a_hundred() {
         let mut progress = Progress::default();
         assert_eq!(progress.percent(), 0);
-        assert_eq!(progress.update("Progress:"), None);
+        assert!(progress.update("Progress:").is_none());
         assert!(progress.update("[Unity] in progress...").is_some());
         assert!(progress.update("[Android Build Support] in progress...").is_some());
+        let moving = progress.update("[Unity] downloading 12.5%").unwrap();
+        assert!(moving.downloading);
+        assert_eq!(moving.percent, Some(12.5));
+        assert_eq!(moving.text, "Unity: downloading 12.5%");
+        assert!(!progress.update("[Unity] installing 30%").unwrap().downloading);
         progress.update("[Unity] downloading 50%");
         assert_eq!(progress.percent(), 25);
         progress.update("[Unity] downloading 100%");
@@ -1056,6 +1151,17 @@ mod tests {
         assert_eq!(outcome_text("hub", "", &Err(Stop::Cancelled)).0, "cancelled");
         let failed = outcome_text("editor", "x", &Err(Stop::Failed("It broke".to_string())));
         assert_eq!((failed.0, failed.1.as_str(), failed.2), ("failed", "It broke", "warning"));
+    }
+
+    #[test]
+    fn a_proxy_in_the_environment_is_noticed_in_any_spelling() {
+        let none = |_: &str| None;
+        assert!(!proxy_in_environment(none));
+        for name in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"] {
+            assert!(proxy_in_environment(|asked| (asked == name).then(|| "http://proxy:8080".to_string())), "{name}");
+            assert!(!proxy_in_environment(|asked| (asked == name).then(|| "  ".to_string())), "{name} blank");
+        }
+        assert!(!proxy_in_environment(|asked| (asked == "NO_PROXY").then(|| "localhost".to_string())));
     }
 
     #[test]

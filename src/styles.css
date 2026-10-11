@@ -2401,3 +2401,7 @@ code {
 .speed-block .speed-limit {
 	width: 100%;
 }
+
+.install-notice {
+	color: var(--warn);
+}

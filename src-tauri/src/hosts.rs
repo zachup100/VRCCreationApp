@@ -41,6 +41,20 @@ pub fn is_private_url(url: &Url) -> bool {
     }
 }
 
+pub async fn resolve_allowed(host: &str, port: u16, enabled: bool) -> Result<Vec<std::net::SocketAddr>, String> {
+    let addresses: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|error| error.to_string())?
+        .collect();
+    if addresses.is_empty() {
+        return Err("The address could not be found".to_string());
+    }
+    if enabled && addresses.iter().any(|address| is_private_ip(address.ip())) {
+        return Err(BLOCKED_MESSAGE.to_string());
+    }
+    Ok(addresses)
+}
+
 pub async fn ensure_allowed(url: &Url, enabled: bool) -> Result<(), String> {
     if !enabled {
         return Ok(());
@@ -113,5 +127,29 @@ mod tests {
     fn an_enabled_check_blocks_a_private_literal() {
         let result = futures::executor::block_on(ensure_allowed(&url("http://192.168.1.1/x"), true));
         assert_eq!(result.unwrap_err(), BLOCKED_MESSAGE);
+    }
+
+    fn run<F: std::future::Future>(future: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
+    }
+
+    #[test]
+    fn a_name_that_resolves_privately_is_refused_when_blocking_is_on() {
+        let blocked = run(resolve_allowed("localhost", 443, true));
+        assert_eq!(blocked.unwrap_err(), BLOCKED_MESSAGE);
+        let literal = run(resolve_allowed("127.0.0.1", 443, true));
+        assert_eq!(literal.unwrap_err(), BLOCKED_MESSAGE);
+    }
+
+    #[test]
+    fn resolving_returns_the_checked_addresses_when_blocking_is_off() {
+        let found = run(resolve_allowed("127.0.0.1", 8443, false)).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].port(), 8443);
+        assert!(found[0].ip().is_loopback());
     }
 }

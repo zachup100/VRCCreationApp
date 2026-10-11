@@ -1,10 +1,10 @@
-use crate::limits::check_host;
-use reqwest::Url;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use crate::hosts::{resolve_allowed, BLOCKED_MESSAGE};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::watch;
 
 pub const LIMIT_CHOICES: [u32; 8] = [0, 1, 2, 4, 8, 16, 24, 32];
 pub const BYTES_PER_MEGABYTE: u64 = 1_000_000;
@@ -15,6 +15,7 @@ const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_CONNECTIONS: usize = 128;
 const CHUNK: usize = 16 * 1024;
+const IDLE_LIMIT: Duration = Duration::from_secs(5 * 60);
 
 pub fn limit_allowed(megabytes: u32) -> bool {
     LIMIT_CHOICES.contains(&megabytes)
@@ -82,6 +83,7 @@ pub struct Config {
     pub block_private: bool,
     pub port: u16,
     pub allow: fn(&str) -> bool,
+    pub idle: Duration,
 }
 
 impl Config {
@@ -91,13 +93,39 @@ impl Config {
             block_private,
             port: 443,
             allow: host_allowed,
+            idle: IDLE_LIMIT,
         }
+    }
+}
+
+struct Activity {
+    base: Instant,
+    last: AtomicU64,
+}
+
+impl Activity {
+    fn new() -> Self {
+        Self {
+            base: Instant::now(),
+            last: AtomicU64::new(0),
+        }
+    }
+
+    fn touch(&self) {
+        self.last
+            .store(self.base.elapsed().as_millis() as u64, Ordering::Relaxed);
+    }
+
+    fn idle_for(&self) -> Duration {
+        let now = self.base.elapsed().as_millis() as u64;
+        Duration::from_millis(now.saturating_sub(self.last.load(Ordering::Relaxed)))
     }
 }
 
 pub struct Throttle {
     port: u16,
-    closed: Arc<AtomicBool>,
+    transferred: Arc<AtomicU64>,
+    _stop: watch::Sender<()>,
     task: tokio::task::JoinHandle<()>,
 }
 
@@ -105,10 +133,11 @@ impl Throttle {
     pub async fn start(config: Config) -> std::io::Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await?;
         let port = listener.local_addr()?.port();
-        let closed = Arc::new(AtomicBool::new(false));
+        let (stop, stopped) = watch::channel(());
         let limiter = Arc::new(Limiter::new(config.rate));
+        let transferred = Arc::new(AtomicU64::new(0));
         let active = Arc::new(AtomicUsize::new(0));
-        let flag = closed.clone();
+        let counter = transferred.clone();
         let task = tokio::spawn(async move {
             loop {
                 let Ok((client, _)) = listener.accept().await else {
@@ -118,25 +147,38 @@ impl Throttle {
                     continue;
                 }
                 active.fetch_add(1, Ordering::SeqCst);
-                let (config, limiter, flag, active) =
-                    (config.clone(), limiter.clone(), flag.clone(), active.clone());
+                let (config, limiter, counter, stopped, active) = (
+                    config.clone(),
+                    limiter.clone(),
+                    counter.clone(),
+                    stopped.clone(),
+                    active.clone(),
+                );
                 tokio::spawn(async move {
-                    handle(client, config, limiter, flag).await;
+                    handle(client, config, limiter, counter, stopped).await;
                     active.fetch_sub(1, Ordering::SeqCst);
                 });
             }
         });
-        Ok(Self { port, closed, task })
+        Ok(Self {
+            port,
+            transferred,
+            _stop: stop,
+            task,
+        })
     }
 
     pub fn url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
     }
+
+    pub fn counter(&self) -> Arc<AtomicU64> {
+        self.transferred.clone()
+    }
 }
 
 impl Drop for Throttle {
     fn drop(&mut self) {
-        self.closed.store(true, Ordering::SeqCst);
         self.task.abort();
     }
 }
@@ -167,7 +209,13 @@ async fn refuse(client: &mut TcpStream, status: &str) {
     let _ = client.write_all(reply.as_bytes()).await;
 }
 
-async fn handle(mut client: TcpStream, config: Config, limiter: Arc<Limiter>, closed: Arc<AtomicBool>) {
+async fn handle(
+    mut client: TcpStream,
+    config: Config,
+    limiter: Arc<Limiter>,
+    transferred: Arc<AtomicU64>,
+    mut stopped: watch::Receiver<()>,
+) {
     let Some((head, rest)) = read_head(&mut client).await else {
         return;
     };
@@ -175,13 +223,12 @@ async fn handle(mut client: TcpStream, config: Config, limiter: Arc<Limiter>, cl
         Some((host, port)) if port == config.port && (config.allow)(&host) => host,
         _ => return refuse(&mut client, "403 Forbidden").await,
     };
-    let Ok(url) = Url::parse(&format!("https://{host}/")) else {
-        return refuse(&mut client, "403 Forbidden").await;
+    let addresses = match resolve_allowed(&host, config.port, config.block_private).await {
+        Ok(addresses) => addresses,
+        Err(message) if message == BLOCKED_MESSAGE => return refuse(&mut client, "403 Forbidden").await,
+        Err(_) => return refuse(&mut client, "502 Bad Gateway").await,
     };
-    if check_host(&url, config.block_private).await.is_err() {
-        return refuse(&mut client, "403 Forbidden").await;
-    }
-    let upstream = match tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect((host.as_str(), config.port))).await {
+    let upstream = match tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(&addresses[..])).await {
         Ok(Ok(stream)) => stream,
         _ => return refuse(&mut client, "502 Bad Gateway").await,
     };
@@ -197,28 +244,53 @@ async fn handle(mut client: TcpStream, config: Config, limiter: Arc<Limiter>, cl
     if !rest.is_empty() && upstream_write.write_all(&rest).await.is_err() {
         return;
     }
+    let activity = Activity::new();
+    activity.touch();
     let upward = async {
-        let _ = tokio::io::copy(&mut client_read, &mut upstream_write).await;
+        let mut buffer = vec![0u8; CHUNK];
+        loop {
+            let count = match client_read.read(&mut buffer).await {
+                Ok(0) | Err(_) => break,
+                Ok(count) => count,
+            };
+            activity.touch();
+            if upstream_write.write_all(&buffer[..count]).await.is_err() {
+                break;
+            }
+        }
         let _ = upstream_write.shutdown().await;
     };
     let downward = async {
         let mut buffer = vec![0u8; CHUNK];
         loop {
-            if closed.load(Ordering::SeqCst) {
-                break;
-            }
             let count = match upstream_read.read(&mut buffer).await {
                 Ok(0) | Err(_) => break,
                 Ok(count) => count,
             };
+            activity.touch();
             limiter.take(count).await;
             if client_write.write_all(&buffer[..count]).await.is_err() {
                 break;
             }
+            transferred.fetch_add(count as u64, Ordering::Relaxed);
+            activity.touch();
         }
         let _ = client_write.shutdown().await;
     };
-    futures::future::join(upward, downward).await;
+    let watchdog = async {
+        let tick = (config.idle / 4).clamp(Duration::from_millis(50), Duration::from_secs(10));
+        loop {
+            tokio::time::sleep(tick).await;
+            if activity.idle_for() > config.idle {
+                break;
+            }
+        }
+    };
+    let stop = async {
+        let _ = stopped.changed().await;
+    };
+    let ends = futures::future::select(Box::pin(watchdog), Box::pin(stop));
+    futures::future::select(Box::pin(futures::future::join(upward, downward)), ends).await;
 }
 
 #[cfg(test)]
@@ -309,6 +381,7 @@ mod tests {
                 block_private: false,
                 port,
                 allow: local,
+                idle: Duration::from_secs(60),
             })
             .await
             .unwrap();
@@ -353,11 +426,109 @@ mod tests {
                 block_private: true,
                 port: 443,
                 allow: |host| host == "127.0.0.1",
+                idle: Duration::from_secs(60),
             })
             .await
             .unwrap();
             let reply = ask(&proxy, "CONNECT 127.0.0.1:443 HTTP/1.1\r\n\r\n").await;
             assert!(reply.starts_with("HTTP/1.1 403"), "{reply}");
+        });
+    }
+
+    async fn silent_upstream() -> u16 {
+        let upstream = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = upstream.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            loop {
+                let Ok((stream, _)) = upstream.accept().await else {
+                    break;
+                };
+                held.push(stream);
+            }
+        });
+        port
+    }
+
+    async fn open_tunnel(proxy: &Throttle, port: u16) -> TcpStream {
+        let address = proxy.url().trim_start_matches("http://").to_string();
+        let mut stream = TcpStream::connect(address).await.unwrap();
+        stream
+            .write_all(format!("CONNECT 127.0.0.1:{port} HTTP/1.1\r\n\r\n").as_bytes())
+            .await
+            .unwrap();
+        let mut reply = vec![0u8; "HTTP/1.1 200 Connection Established\r\n\r\n".len()];
+        stream.read_exact(&mut reply).await.unwrap();
+        assert!(reply.starts_with(b"HTTP/1.1 200"));
+        stream
+    }
+
+    #[test]
+    fn an_idle_tunnel_is_closed() {
+        run(async {
+            let port = silent_upstream().await;
+            let proxy = Throttle::start(Config {
+                rate: 1_000_000,
+                block_private: false,
+                port,
+                allow: local,
+                idle: Duration::from_millis(300),
+            })
+            .await
+            .unwrap();
+            let mut stream = open_tunnel(&proxy, port).await;
+            let mut buffer = [0u8; 16];
+            let result = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut buffer)).await;
+            assert!(matches!(result, Ok(Ok(0)) | Ok(Err(_))), "{result:?}");
+        });
+    }
+
+    #[test]
+    fn open_tunnels_end_when_the_proxy_is_dropped() {
+        run(async {
+            let port = silent_upstream().await;
+            let proxy = Throttle::start(Config {
+                rate: 1_000_000,
+                block_private: false,
+                port,
+                allow: local,
+                idle: Duration::from_secs(300),
+            })
+            .await
+            .unwrap();
+            let mut stream = open_tunnel(&proxy, port).await;
+            drop(proxy);
+            let mut buffer = [0u8; 16];
+            let result = tokio::time::timeout(Duration::from_secs(5), stream.read(&mut buffer)).await;
+            assert!(matches!(result, Ok(Ok(0)) | Ok(Err(_))), "{result:?}");
+        });
+    }
+
+    #[test]
+    fn the_counter_reports_bytes_sent_down_the_tunnel() {
+        run(async {
+            let upstream = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            let port = upstream.local_addr().unwrap().port();
+            tokio::spawn(async move {
+                let (mut stream, _) = upstream.accept().await.unwrap();
+                stream.write_all(&vec![1u8; 50_000]).await.unwrap();
+            });
+            let proxy = Throttle::start(Config {
+                rate: 10_000_000,
+                block_private: false,
+                port,
+                allow: local,
+                idle: Duration::from_secs(60),
+            })
+            .await
+            .unwrap();
+            let counter = proxy.counter();
+            assert_eq!(counter.load(Ordering::Relaxed), 0);
+            let mut stream = open_tunnel(&proxy, port).await;
+            let mut all = Vec::new();
+            stream.read_to_end(&mut all).await.unwrap();
+            assert_eq!(all.len(), 50_000);
+            assert_eq!(counter.load(Ordering::Relaxed), 50_000);
         });
     }
 

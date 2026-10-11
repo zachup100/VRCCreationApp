@@ -28,6 +28,7 @@ export interface UnityInstall {
 	total: number;
 	line: string;
 	version: string;
+	notice: string;
 	message: string;
 }
 

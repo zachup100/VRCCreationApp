@@ -122,6 +122,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	const linkToast = useRef<number | null>(null);
 	const packageOperationRef = useRef(false);
 	const incomingRef = useRef<IncomingRepository | null>(null);
+	const installNotice = useRef("");
 
 	const dismissToast = useCallback((id: number) => {
 		if (linkToast.current === id) {
@@ -222,7 +223,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		let cancelled = false;
 		listen<UnityInstall>("unity-install", (event) => {
 			const install = event.payload;
+			if (install.notice && install.notice !== installNotice.current) {
+				installNotice.current = install.notice;
+				notify("warning", install.notice);
+			}
 			if (install.phase === "finished" || install.phase === "failed" || install.phase === "cancelled") {
+				installNotice.current = "";
 				setUnityInstall(null);
 				notify(install.phase === "finished" ? "success" : install.phase === "failed" ? "error" : "info", install.message);
 				void refreshEditors();
