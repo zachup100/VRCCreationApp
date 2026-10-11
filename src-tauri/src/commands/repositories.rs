@@ -431,8 +431,11 @@ pub async fn repository_update(
         add_remote_repo(&mut settings, parsed, None, header_values, &vpm.io, &LimitedHttp::new(&vpm.http))
             .await
             .map_err(|error| format!("Could not update the repository: {error}"))?;
-        let mut order: Vec<usize> = (0..count - 1).collect();
-        order.insert(index, count - 1);
+        let last = count
+            .checked_sub(1)
+            .ok_or_else(|| "The repository list changed. Refresh and try again.".to_string())?;
+        let mut order: Vec<usize> = (0..last).collect();
+        order.insert(index, last);
         settings.reorder_user_repos_by_indices(&order);
         let new_id = settings.get_user_repos().get(index).and_then(repo_key);
         settings
