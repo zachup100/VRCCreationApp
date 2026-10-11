@@ -1,4 +1,5 @@
 use crate::applog::log;
+use crate::limits::{read_capped, LimitedHttp, REPOSITORY_TIMEOUT};
 use crate::prefs::Prefs;
 use crate::vpm::{VpmContext, CURATED_ID, LOCAL_USER_ID, OFFICIAL_ID};
 use indexmap::IndexMap;
@@ -16,7 +17,6 @@ use vrc_get_vpm::VersionSelector;
 const OFFICIAL_URL: &str = "https://packages.vrchat.com/official?download";
 const CURATED_URL: &str = "https://packages.vrchat.com/curated?download";
 const MAX_HEADERS: usize = 10;
-const MAX_REPOSITORY_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Deserialize)]
 pub struct HeaderInput {
@@ -238,7 +238,7 @@ pub async fn repository_preview(
         Ok(map) => map,
         Err(message) => return Ok(RepositoryPreview::DownloadError { message }),
     };
-    let mut request = vpm.http.get(parsed.clone());
+    let mut request = vpm.http.get(parsed.clone()).timeout(REPOSITORY_TIMEOUT);
     for (name, value) in &header_values {
         request = request.header(name.as_ref(), value.as_ref());
     }
@@ -255,18 +255,9 @@ pub async fn repository_preview(
             message: format!("The server responded with {}", response.status()),
         });
     }
-    let bytes = match response.bytes().await {
-        Ok(bytes) if bytes.len() <= MAX_REPOSITORY_BYTES => bytes,
-        Ok(_) => {
-            return Ok(RepositoryPreview::DownloadError {
-                message: "The repository listing is too large".to_string(),
-            })
-        }
-        Err(error) => {
-            return Ok(RepositoryPreview::DownloadError {
-                message: error.to_string(),
-            })
-        }
+    let bytes = match read_capped(response).await {
+        Ok(bytes) => bytes,
+        Err(message) => return Ok(RepositoryPreview::DownloadError { message }),
     };
 
     let body = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
@@ -339,7 +330,7 @@ pub async fn repository_add(
     let mut settings = Settings::load(&vpm.io)
         .await
         .map_err(|error| format!("Could not read repository settings: {error}"))?;
-    add_remote_repo(&mut settings, parsed, None, header_map(&headers)?, &vpm.io, &vpm.http)
+    add_remote_repo(&mut settings, parsed, None, header_map(&headers)?, &vpm.io, &LimitedHttp::new(&vpm.http))
         .await
         .map_err(|error| format!("Could not add the repository: {error}"))?;
     settings
@@ -411,7 +402,7 @@ pub async fn repository_update(
             return Err("The repository list changed. Refresh and try again.".to_string());
         }
         settings.remove_repo_at_index(index);
-        add_remote_repo(&mut settings, parsed, None, header_values, &vpm.io, &vpm.http)
+        add_remote_repo(&mut settings, parsed, None, header_values, &vpm.io, &LimitedHttp::new(&vpm.http))
             .await
             .map_err(|error| format!("Could not update the repository: {error}"))?;
         let mut order: Vec<usize> = (0..count - 1).collect();
@@ -575,7 +566,7 @@ pub async fn import_packages_from_vcc(
                     candidate.name.as_deref(),
                     candidate.headers,
                     &vpm.io,
-                    &vpm.http,
+                    &LimitedHttp::new(&vpm.http),
                 )
                 .await;
                 match outcome {

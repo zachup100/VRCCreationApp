@@ -4,6 +4,7 @@ mod commands;
 mod deeplink;
 mod download;
 mod editors;
+mod limits;
 mod manifest;
 mod prefs;
 mod presets;

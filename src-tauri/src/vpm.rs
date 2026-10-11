@@ -1,3 +1,4 @@
+use crate::limits::LimitedHttp;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -73,7 +74,7 @@ impl VpmContext {
 
         let collection = match loaded {
             Some(collection) => collection,
-            None => PackageCollection::load(&settings, &self.io, Some(&self.http))
+            None => PackageCollection::load(&settings, &self.io, Some(&LimitedHttp::new(&self.http)))
                 .await
                 .map_err(|error| format!("Could not load packages: {error}"))?,
         };
