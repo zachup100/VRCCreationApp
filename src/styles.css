@@ -713,6 +713,7 @@ button.th:hover {
 
 .notice {
 	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 10px;
 	padding: 10px 14px;
@@ -1024,6 +1025,7 @@ code {
 .checkbox {
 	display: grid;
 	place-items: center;
+	flex: none;
 	width: 20px;
 	height: 20px;
 	padding: 0;
@@ -1608,6 +1610,14 @@ code {
 	color: var(--text);
 }
 
+.check-row.top {
+	align-items: flex-start;
+}
+
+.check-row.top .checkbox {
+	margin-top: 2px;
+}
+
 .modal-note {
 	margin-top: 10px;
 	font-size: 14px;
@@ -2045,6 +2055,7 @@ code {
 }
 
 .chip {
+	white-space: nowrap;
 	padding: 2px 9px;
 	background: var(--surface-raised);
 	border: 1px solid var(--border);

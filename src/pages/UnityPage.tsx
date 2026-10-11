@@ -269,7 +269,7 @@ export function UnityPage() {
 					}
 				>
 					<p>Unity Hub will download and install Unity {installTarget.version}. This is several gigabytes and can take a long time.</p>
-					<div className="check-row">
+					<div className="check-row top">
 						<Checkbox checked={withAndroid} onChange={setWithAndroid} label="Install Android build support" />
 						<span>
 							Also install Android build support (Android Build Support, OpenJDK, and the Android SDK and NDK tools). Needed to build VRChat projects for Quest and other Android devices.
