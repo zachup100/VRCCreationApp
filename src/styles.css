@@ -1612,6 +1612,7 @@ code {
 
 .check-row.top {
 	align-items: flex-start;
+	cursor: pointer;
 }
 
 .check-row.top .checkbox {

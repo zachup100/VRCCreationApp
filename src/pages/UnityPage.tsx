@@ -271,20 +271,20 @@ export function UnityPage() {
 					}
 				>
 					<p>Unity Hub will download and install Unity {installTarget.version}. This is several gigabytes and can take a long time.</p>
-					<div className="check-row top">
+					<label className="check-row top">
 						<Checkbox checked={withAndroid} onChange={setWithAndroid} label="Install Android Support" />
-						<div className="option-text">
+						<span className="option-text">
 							<strong>Install Android Support</strong>
 							<span className="muted">For Quest and other Android builds. Includes OpenJDK and the SDK and NDK tools.</span>
-						</div>
-					</div>
-					<div className="check-row top">
+						</span>
+					</label>
+					<label className="check-row top">
 						<Checkbox checked={withIos} onChange={setWithIos} label="Install iOS Support" />
-						<div className="option-text">
+						<span className="option-text">
 							<strong>Install iOS Support</strong>
 							<span className="muted">For iPhone and iPad builds.</span>
-						</div>
-					</div>
+						</span>
+					</label>
 					<p className="modal-note muted">While the install runs, projects cannot be opened or changed. You can cancel it from this page, but a cancelled install may leave a partial editor behind.</p>
 				</Modal>
 			)}
