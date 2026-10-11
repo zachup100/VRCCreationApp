@@ -13,6 +13,7 @@ mod presets;
 mod prereq;
 mod store;
 mod throttle;
+mod update;
 mod vpm;
 
 use std::sync::Mutex;
@@ -72,6 +73,7 @@ pub fn run() {
             commands::install::install_unity_hub,
             commands::install::install_unity_editor,
             commands::install::cancel_unity_install,
+            update::check_for_update,
             commands::projects::list_projects,
             commands::projects::add_project,
             commands::projects::remove_project,

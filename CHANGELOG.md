@@ -31,6 +31,7 @@ First release. Windows 10 and 11 only.
 - Dark, OLED, light and system themes.
 - Logs page with backend activity, download progress for package installs, keyboard and screen reader support for dialogs, menus and option groups.
 - Open source license notices are included in the app under Settings, About.
+- The app checks GitHub for a newer release when it starts (at most once a day) and from Settings, About, with a switch to turn the automatic check off. It only tells you and links the release page.
 
 ### Notes
 - The installers download the Microsoft WebView2 Runtime if it is missing. The portable executable shows a message with a download link instead.

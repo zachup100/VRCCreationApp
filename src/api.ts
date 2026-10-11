@@ -323,6 +323,7 @@ export interface AppSettings {
 	showPrerelease: boolean;
 	defaultUnityArgs: string;
 	unityDownloadLimit: number;
+	updateCheckDisabled: boolean;
 }
 
 export interface SettingsPatch {
@@ -331,6 +332,19 @@ export interface SettingsPatch {
 	showPrerelease?: boolean;
 	defaultUnityArgs?: string;
 	unityDownloadLimit?: number;
+	updateCheckDisabled?: boolean;
+}
+
+export interface UpdateStatus {
+	current: string;
+	latest: string | null;
+	available: boolean;
+	url: string | null;
+	checkedAt: number;
+}
+
+export function checkForUpdate(manual: boolean): Promise<UpdateStatus> {
+	return invoke<UpdateStatus>("check_for_update", { manual });
 }
 
 export function getSettings(): Promise<AppSettings> {

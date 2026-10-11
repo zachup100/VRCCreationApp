@@ -15,6 +15,7 @@ pub struct SettingsPatch {
     show_prerelease: Option<bool>,
     default_unity_args: Option<String>,
     unity_download_limit: Option<u32>,
+    update_check_disabled: Option<bool>,
 }
 
 fn system_root() -> String {
@@ -102,6 +103,9 @@ pub fn update_settings(
     }
     if let Some(value) = patch.unity_download_limit {
         settings.unity_download_limit = value;
+    }
+    if let Some(value) = patch.update_check_disabled {
+        settings.update_check_disabled = value;
     }
     let result = prefs.settings().clone();
     prefs.save().map_err(|error| error.to_string())?;

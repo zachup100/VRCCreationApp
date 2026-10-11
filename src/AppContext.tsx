@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { deepLinkPendingCount, deepLinkTakeAddRepository, getSettings, listProjects, listUnityEditors, refreshProjectInfo, updateSettings as saveSettings } from "./api";
-import type { AppSettings, IncomingRepository, ProjectInfo, SettingsPatch, UnityEditorInfo, UnityInstall } from "./api";
+import { checkForUpdate, deepLinkPendingCount, deepLinkTakeAddRepository, getSettings, listProjects, listUnityEditors, openExternal, refreshProjectInfo, updateSettings as saveSettings } from "./api";
+import type { AppSettings, IncomingRepository, ProjectInfo, SettingsPatch, UnityEditorInfo, UnityInstall, UpdateStatus } from "./api";
 import { errorMessage } from "./format";
 import { applyTheme, loadTheme, loadView, saveTheme, saveView } from "./theme";
 import type { ThemeChoice, ViewMode } from "./theme";
@@ -65,6 +65,8 @@ interface AppContextValue {
 	settings: AppSettings;
 	updateSettings: (patch: SettingsPatch) => Promise<boolean>;
 	unityInstall: UnityInstall | null;
+	update: UpdateStatus | null;
+	checkUpdates: (manual: boolean) => Promise<void>;
 	packageOperation: boolean;
 	setPackageOperation: (active: boolean) => void;
 	packageImport: ImportProgress | null;
@@ -111,8 +113,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		showPrerelease: false,
 		defaultUnityArgs: "",
 		unityDownloadLimit: 0,
+		updateCheckDisabled: false,
 	});
 	const [unityInstall, setUnityInstall] = useState<UnityInstall | null>(null);
+	const [update, setUpdate] = useState<UpdateStatus | null>(null);
 	const [packageOperation, setPackageOperation] = useState(false);
 	const [packageImport, setPackageImport] = useState<ImportProgress | null>(null);
 	const [repositoriesVersion, setRepositoriesVersion] = useState(0);
@@ -123,6 +127,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	const packageOperationRef = useRef(false);
 	const incomingRef = useRef<IncomingRepository | null>(null);
 	const installNotice = useRef("");
+	const announcedUpdate = useRef("");
 
 	const dismissToast = useCallback((id: number) => {
 		if (linkToast.current === id) {
@@ -217,6 +222,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			unlisten?.();
 		};
 	}, [notify]);
+
+	const checkUpdates = useCallback(
+		async (manual: boolean) => {
+			try {
+				const status = await checkForUpdate(manual);
+				setUpdate(status);
+				if (status.available && status.latest && status.url) {
+					if (manual || announcedUpdate.current !== status.latest) {
+						announcedUpdate.current = status.latest;
+						const url = status.url;
+						notify("info", `Version ${status.latest} is available.`, {
+							sticky: true,
+							action: {
+								label: "View",
+								run: () => void openExternal(url).catch((error) => notify("error", errorMessage(error))),
+							},
+						});
+					}
+				} else if (manual) {
+					notify("success", "You have the latest version.");
+				}
+			} catch (error) {
+				if (manual) {
+					notify("error", errorMessage(error));
+				}
+			}
+		},
+		[notify],
+	);
+
+	useEffect(() => {
+		void checkUpdates(false);
+	}, [checkUpdates]);
 
 	useEffect(() => {
 		let unlisten: (() => void) | null = null;
@@ -359,6 +397,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			settings,
 			updateSettings,
 			unityInstall,
+			update,
+			checkUpdates,
 			packageOperation,
 			setPackageOperation,
 			packageImport,
@@ -390,6 +430,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			settings,
 			updateSettings,
 			unityInstall,
+			update,
+			checkUpdates,
 			packageOperation,
 			packageImport,
 			repositoriesVersion,

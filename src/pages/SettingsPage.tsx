@@ -175,6 +175,50 @@ function ProjectSettings() {
 	);
 }
 
+function UpdateRows() {
+	const { settings, updateSettings, update, checkUpdates } = useApp();
+	const actions = useActions();
+	const [checking, setChecking] = useState(false);
+	const check = async () => {
+		setChecking(true);
+		await checkUpdates(true);
+		setChecking(false);
+	};
+	const status =
+		update === null || update.checkedAt === 0
+			? "Not checked yet."
+			: update.available && update.latest
+				? `Version ${update.latest} is available.`
+				: "You have the latest version.";
+	return (
+		<>
+			<SettingRow icon="refresh" title="Check for Updates" description={status}>
+				<div className="button-stack">
+					{update?.available && update.url && (
+						<Button variant="primary" icon="external" onClick={() => void actions.openLink(update.url ?? "")}>
+							View release
+						</Button>
+					)}
+					<Button disabled={checking} onClick={() => void check()}>
+						{checking ? "Checking..." : "Check Now"}
+					</Button>
+				</div>
+			</SettingRow>
+			<SettingRow
+				icon="world"
+				title="Check Automatically"
+				description="Looks for a new version when the app starts, at most once a day, by asking GitHub for the latest release. Nothing is downloaded or installed for you. Turning this off stops all automatic requests."
+			>
+				<Switch
+					label="Check for updates automatically"
+					checked={!settings.updateCheckDisabled}
+					onChange={(value) => void updateSettings({ updateCheckDisabled: !value })}
+				/>
+			</SettingRow>
+		</>
+	);
+}
+
 function AboutSection() {
 	const [version, setVersion] = useState("");
 	const [showLicenses, setShowLicenses] = useState(false);
@@ -196,6 +240,7 @@ function AboutSection() {
 						Open Source Licenses
 					</Button>
 				</SettingRow>
+				<UpdateRows />
 			</div>
 			{showLicenses && <LicensesModal onClose={() => setShowLicenses(false)} />}
 		</section>

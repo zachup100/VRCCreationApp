@@ -11,6 +11,7 @@ It is not made or endorsed by VRChat. VRChat and its logos belong to VRChat Inc.
 - Install, upgrade, downgrade, remove, resolve and reinstall packages with a review step before anything changes.
 - Manage repositories, including private ones that need authentication headers, and hide packages you never use.
 - Dark, OLED and light themes.
+- Tells you when a newer version is released on GitHub. The app asks GitHub for the latest release when it starts (at most once a day) and from Settings, About. Nothing is downloaded or installed for you, and the automatic check can be turned off in the same place. GitHub sees the request the way any website sees a visit.
 
 ## Install (Windows 10 and 11)
 
@@ -30,7 +31,7 @@ Unity is not bundled. Install Unity Hub and the Unity version your projects use 
 
 Everything is stored in `%APPDATA%\net.zachlabs.vrccreationapp.main`:
 
-- `projects.json`, `presets.json` and `preferences.json` for your lists and settings.
+- `projects.json`, `presets.json` and `preferences.json` for your lists and settings (preferences also remember when the last update check ran and the newest release it saw).
 - `vpm\` for repository settings and the package cache. Authentication headers you give a repository are saved here in plain text, the same way the Creator Companion stores them, so keep this folder private. The Logs page hides the query string and any credentials in repository addresses.
 - `Backups\` for project backups, unless you pick another folder in Settings.
 

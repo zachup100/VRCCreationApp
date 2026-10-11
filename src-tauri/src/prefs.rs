@@ -18,6 +18,8 @@ pub struct AppSettings {
     pub default_unity_args: String,
     #[serde(default)]
     pub unity_download_limit: u32,
+    #[serde(default)]
+    pub update_check_disabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -35,6 +37,12 @@ struct PrefsFile {
     hidden_repositories: Vec<String>,
     #[serde(default)]
     hidden_packages: Vec<String>,
+    #[serde(default)]
+    last_update_check: i64,
+    #[serde(default)]
+    latest_release: String,
+    #[serde(default)]
+    latest_release_url: String,
     #[serde(flatten)]
     settings: AppSettings,
 }
@@ -125,6 +133,20 @@ impl Prefs {
             .custom_editors
             .retain(|existing| existing.path != path);
         self.data.custom_editors.len() != before
+    }
+
+    pub fn update_cache(&self) -> (i64, String, String) {
+        (
+            self.data.last_update_check,
+            self.data.latest_release.clone(),
+            self.data.latest_release_url.clone(),
+        )
+    }
+
+    pub fn set_update_cache(&mut self, checked_at: i64, version: &str, url: &str) {
+        self.data.last_update_check = checked_at;
+        self.data.latest_release = version.to_string();
+        self.data.latest_release_url = url.to_string();
     }
 
     pub fn settings(&self) -> &AppSettings {
