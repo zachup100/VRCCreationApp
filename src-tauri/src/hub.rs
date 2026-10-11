@@ -2,7 +2,7 @@ use crate::applog::log;
 use crate::editors;
 use crate::limits::check_host;
 use crate::prefs::Prefs;
-use crate::throttle::{limit_allowed, Config, Throttle, BYTES_PER_MEGABYTE};
+use crate::throttle::{host_allowed, limit_allowed, Config, Throttle, BYTES_PER_MEGABYTE};
 use crate::vpm::VpmContext;
 use base64::Engine;
 use reqwest::Url;
@@ -23,6 +23,7 @@ const EVENT: &str = "unity-install";
 const FEED_URL: &str = "https://public-cdn.cloud.unity3d.com/hub/prod/latest.yml";
 const FEED_BASE: &str = "https://public-cdn.cloud.unity3d.com/hub/prod/";
 const MAX_FEED_BYTES: usize = 64 * 1024;
+const MAX_REDIRECTS: usize = 5;
 const MAX_HUB_BYTES: u64 = 500 * 1024 * 1024;
 const FEED_TIMEOUT: Duration = Duration::from_secs(30);
 const EDITOR_LIMIT: Duration = Duration::from_secs(4 * 60 * 60);
@@ -35,7 +36,7 @@ const LIMIT_IGNORED_NOTICE: &str = "The download speed limit is not being applie
 const LINE_LIMIT: usize = 200;
 const TAIL_LINES: usize = 6;
 
-const SIGNATURE_SCRIPT: &str = "$s = Get-AuthenticodeSignature -LiteralPath $env:VRCC_FILE; if ($s.Status -eq 'Valid' -and $s.SignerCertificate -ne $null -and $s.SignerCertificate.GetNameInfo('SimpleName', $false) -like 'Unity Technologies*') { exit 0 } else { exit 1 }";
+const SIGNER_NAMES: [&str; 1] = ["Unity Technologies SF"];
 const SETUP_SCRIPT: &str = "$ErrorActionPreference = 'Stop'; try { $p = Start-Process -FilePath $env:VRCC_FILE -ArgumentList '/S' -Verb RunAs -Wait -PassThru; exit $p.ExitCode } catch { exit 1223 }";
 
 pub struct Recommended {
@@ -366,19 +367,20 @@ pub struct HubFeed {
     pub size: u64,
 }
 
-fn valid_installer_path(path: &str) -> bool {
+fn valid_version(text: &str) -> bool {
+    let parts: Vec<&str> = text.split('.').collect();
+    (2..=4).contains(&parts.len())
+        && parts
+            .iter()
+            .all(|part| !part.is_empty() && part.len() <= 6 && part.chars().all(|character| character.is_ascii_digit()))
+}
+
+fn valid_installer_path(path: &str, arch: &str) -> bool {
     let mut parts = path.split('/');
     let (Some(folder), Some(file), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
     };
-    let folder_ok = !folder.is_empty()
-        && folder.chars().all(|character| character.is_ascii_digit() || character == '.');
-    let file_ok = file.starts_with("UnityHubSetup-")
-        && file.ends_with(".exe")
-        && file
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '.' || character == '-');
-    folder_ok && file_ok
+    valid_version(folder) && file == format!("UnityHubSetup-{folder}-{arch}.exe")
 }
 
 pub fn parse_feed(text: &str, arch: &str) -> Result<HubFeed, String> {
@@ -405,7 +407,7 @@ pub fn parse_feed(text: &str, arch: &str) -> Result<HubFeed, String> {
         .into_iter()
         .find(|(path, _, _)| path.ends_with(&suffix))
         .ok_or_else(|| "Unity's download list has no installer for this computer".to_string())?;
-    if !valid_installer_path(&path) {
+    if !valid_installer_path(&path, arch) {
         return Err("Unity's download list holds an unexpected address".to_string());
     }
     let size = size.ok_or_else(|| "Unity's download list has no file size".to_string())?;
@@ -778,15 +780,29 @@ async fn hub_install(session: &Session, folder: &Path) -> Result<(), Stop> {
     log(&session.app, "info", "Installing Unity Hub".to_string());
     session.emit("downloading", 0, 0, "Checking the latest Unity Hub");
 
-    let feed_text = fetch_feed(&vpm).await?;
+    let client = hub_client()?;
+    let blocked = vpm.private_hosts_blocked();
+    let feed_text = fetch_feed(&client, blocked).await?;
     let feed = parse_feed(&feed_text, arch_suffix())?;
     let file_name = feed.path.rsplit('/').next().unwrap_or("UnityHubSetup.exe").to_string();
 
     std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
     let setup = folder.join(&file_name);
-    download_setup(session, &vpm, &feed, &setup).await?;
+    download_setup(session, &client, blocked, &feed, &setup).await?;
 
     session.emit("verifying", feed.size, feed.size, "Checking the installer");
+    let mut held = open_locked(&setup).map_err(|error| error.to_string())?;
+    let expected = feed.sha512.clone();
+    let (returned, unchanged) = tokio::task::spawn_blocking(move || {
+        let same = hash_file(&mut held).map(|hash| hash == expected).unwrap_or(false);
+        (held, same)
+    })
+    .await
+    .map_err(|_| "The checksum check stopped unexpectedly")?;
+    let _held = returned;
+    if !unchanged {
+        return Err("The Unity Hub installer changed after it was downloaded and was not run".into());
+    }
     let target = setup.clone();
     let signed = tokio::task::spawn_blocking(move || verify_signature(&target))
         .await
@@ -811,13 +827,32 @@ async fn hub_install(session: &Session, folder: &Path) -> Result<(), Stop> {
     Ok(())
 }
 
-async fn fetch_feed(vpm: &VpmContext) -> Result<String, Stop> {
+pub fn unity_redirect_ok(url: &Url, earlier: usize) -> bool {
+    url.scheme() == "https" && url.host_str().map(host_allowed).unwrap_or(false) && earlier < MAX_REDIRECTS
+}
+
+fn hub_client() -> Result<reqwest::Client, Stop> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if unity_redirect_ok(attempt.url(), attempt.previous().len()) {
+                attempt.follow()
+            } else {
+                attempt.error("The download was redirected away from Unity's servers")
+            }
+        }))
+        .user_agent(concat!("VRCCreationApp/", env!("CARGO_PKG_VERSION")))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| Stop::Failed(error.to_string()))
+}
+
+async fn fetch_feed(client: &reqwest::Client, blocked: bool) -> Result<String, Stop> {
     let url = Url::parse(FEED_URL).map_err(|error| error.to_string())?;
-    check_host(&url, vpm.private_hosts_blocked())
+    check_host(&url, blocked)
         .await
         .map_err(|error| error.to_string())?;
-    let mut response = vpm
-        .http
+    let mut response = client
         .get(url)
         .timeout(FEED_TIMEOUT)
         .send()
@@ -836,16 +871,16 @@ async fn fetch_feed(vpm: &VpmContext) -> Result<String, Stop> {
 
 async fn download_setup(
     session: &Session,
-    vpm: &VpmContext,
+    client: &reqwest::Client,
+    blocked: bool,
     feed: &HubFeed,
     destination: &Path,
 ) -> Result<(), Stop> {
     let url = Url::parse(&format!("{FEED_BASE}{}", feed.path)).map_err(|error| error.to_string())?;
-    check_host(&url, vpm.private_hosts_blocked())
+    check_host(&url, blocked)
         .await
         .map_err(|error| error.to_string())?;
-    let mut response = vpm
-        .http
+    let mut response = client
         .get(url)
         .send()
         .await
@@ -880,6 +915,32 @@ async fn download_setup(
     Ok(())
 }
 
+pub fn open_locked(path: &Path) -> std::io::Result<std::fs::File> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(1);
+    }
+    options.open(path)
+}
+
+pub fn hash_file(file: &mut std::fs::File) -> std::io::Result<Vec<u8>> {
+    use std::io::{Read, Seek, SeekFrom};
+    file.seek(SeekFrom::Start(0))?;
+    let mut hasher = Sha512::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        let count = file.read(&mut buffer)?;
+        if count == 0 {
+            break;
+        }
+        hasher.update(&buffer[..count]);
+    }
+    Ok(hasher.finalize().to_vec())
+}
+
 #[cfg(windows)]
 fn hide_window(command: &mut Command) {
     use std::os::windows::process::CommandExt;
@@ -900,13 +961,24 @@ fn powershell(script: &str, file: &Path) -> Result<Command, Stop> {
     Ok(command)
 }
 
+fn signature_script() -> String {
+    let names = SIGNER_NAMES
+        .iter()
+        .map(|name| format!("'{name}'"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "$s = Get-AuthenticodeSignature -LiteralPath $env:VRCC_FILE; if ($s.Status -eq 'Valid' -and $s.SignerCertificate -ne $null -and @({names}) -ccontains $s.SignerCertificate.GetNameInfo('SimpleName', $false)) {{ exit 0 }} else {{ exit 1 }}"
+    )
+}
+
 fn verify_signature(file: &Path) -> Result<(), Stop> {
     if !cfg!(windows) {
         return Err("Installing Unity Hub is only supported on Windows".into());
     }
-    match run_streaming(powershell(SIGNATURE_SCRIPT, file)?, None, SIGNATURE_LIMIT, |_| {}) {
+    match run_streaming(powershell(&signature_script(), file)?, None, SIGNATURE_LIMIT, |_| {}) {
         Ok(RunEnd::Exited(Some(0))) => Ok(()),
-        Ok(RunEnd::Exited(_)) => Err("The Unity Hub installer is not signed by Unity Technologies and was not run".into()),
+        Ok(RunEnd::Exited(_)) => Err("The Unity Hub installer is not signed by the expected Unity Technologies certificate and was not run".into()),
         Ok(_) => Err("The signature check took too long, so the installer was not run".into()),
         Err(error) => Err(Stop::Failed(format!("Could not check the installer signature: {error}"))),
     }
@@ -955,10 +1027,90 @@ mod tests {
             "3.22.2/UnityHubSetup-3.22.2-x64.exe/extra",
             "UnityHubSetup-3.22.2-x64.exe",
             "3.22.2\\UnityHubSetup-3.22.2-x64.exe",
+            "../UnityHubSetup-3.22.2-x64.exe",
+            "..../UnityHubSetup-3.22.2-x64.exe",
+            "1..2/UnityHubSetup-1..2-x64.exe",
+            "./UnityHubSetup-.-x64.exe",
+            "3.22.2/UnityHubSetup-3.22.3-x64.exe",
+            "3.22.2/UnityHubSetup-3.22.2-x64.EXE",
+            "/UnityHubSetup--x64.exe",
+            "3/UnityHubSetup-3-x64.exe",
         ] {
             let text = format!("files:\n  - url: {path}\n    sha512: {}\n    size: 100\n", "A".repeat(86) + "==");
             assert!(parse_feed(&text, "x64").is_err(), "{path}");
         }
+    }
+
+    #[test]
+    fn installer_paths_must_be_a_version_folder_with_a_matching_file_name() {
+        assert!(valid_installer_path("3.22.2/UnityHubSetup-3.22.2-x64.exe", "x64"));
+        assert!(valid_installer_path("3.22.2/UnityHubSetup-3.22.2-arm64.exe", "arm64"));
+        assert!(valid_installer_path("3.0/UnityHubSetup-3.0-x64.exe", "x64"));
+        assert!(!valid_installer_path("3.22.2/UnityHubSetup-3.22.2-arm64.exe", "x64"));
+        assert!(!valid_installer_path("3.22.2/UnityHubSetup-3.22.2-x64.exe", "arm64"));
+        for folder in ["..", "....", ".", "", "1..2", "a.b", "3", "1.2.3.4.5", "1234567.1", "3.22.2/x"] {
+            let path = format!("{folder}/UnityHubSetup-{folder}-x64.exe");
+            assert!(!valid_installer_path(&path, "x64"), "{path}");
+        }
+    }
+
+    #[test]
+    fn redirects_may_only_stay_on_unity_hosts_over_https() {
+        let ok = |text: &str, earlier: usize| unity_redirect_ok(&text.parse().unwrap(), earlier);
+        assert!(ok("https://download.unity3d.com/x", 0));
+        assert!(ok("https://public-cdn.cloud.unity3d.com/hub/prod/x", 4));
+        assert!(!ok("https://public-cdn.cloud.unity3d.com/x", 5));
+        assert!(!ok("http://download.unity3d.com/x", 0));
+        assert!(!ok("https://evil.com/x", 0));
+        assert!(!ok("https://unity3d.com.evil.com/x", 0));
+        assert!(!ok("https://127.0.0.1/x", 0));
+        assert!(!ok("https://192.168.0.1/x", 0));
+        assert!(!ok("ftp://download.unity3d.com/x", 0));
+    }
+
+    #[test]
+    fn the_signature_check_names_the_exact_signer_and_cannot_be_injected_into() {
+        let script = signature_script();
+        assert!(script.contains("@('Unity Technologies SF') -ccontains"));
+        assert!(script.contains("$s.Status -eq 'Valid'"));
+        assert!(!script.contains("-like"));
+        for name in SIGNER_NAMES {
+            assert!(!name.contains('\'') && !name.contains('$') && !name.contains('`'));
+        }
+    }
+
+    #[test]
+    fn a_held_file_is_hashed_in_full_and_a_change_is_noticed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("setup.exe");
+        std::fs::write(&path, vec![9u8; 3_000_000]).unwrap();
+        let mut held = open_locked(&path).unwrap();
+        let first = hash_file(&mut held).unwrap();
+        let again = hash_file(&mut held).unwrap();
+        assert_eq!(first, again);
+        assert_eq!(first.len(), 64);
+        let mut expected = Sha512::new();
+        expected.update(vec![9u8; 3_000_000]);
+        assert_eq!(first, expected.finalize().to_vec());
+        drop(held);
+        std::fs::write(&path, vec![8u8; 3_000_000]).unwrap();
+        let mut held = open_locked(&path).unwrap();
+        assert_ne!(hash_file(&mut held).unwrap(), first);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_held_installer_cannot_be_changed_or_deleted_by_anyone_else() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("setup.exe");
+        std::fs::write(&path, b"installer").unwrap();
+        let held = open_locked(&path).unwrap();
+        assert!(std::fs::OpenOptions::new().write(true).open(&path).is_err());
+        assert!(std::fs::write(&path, b"swapped").is_err());
+        assert!(std::fs::remove_file(&path).is_err());
+        assert!(std::fs::read(&path).is_ok());
+        drop(held);
+        assert!(std::fs::remove_file(&path).is_ok());
     }
 
     #[test]
