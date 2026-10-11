@@ -23,7 +23,9 @@ Download the latest release and pick one:
 
 The app needs the Microsoft WebView2 Runtime, which is already part of current Windows 10 and 11. The installers fetch it if it is missing. If you run the portable file without it, the app shows a message with the official download link.
 
-The files are not code signed yet, so Windows SmartScreen may warn you the first time. Each release includes a `SHA256SUMS.txt` file so you can check your download.
+The files are not code signed yet, so Windows SmartScreen may warn you the first time. Each release includes `SHA256SUMS-windows.txt` and `SHA256SUMS-linux.txt` files so you can check your download.
+
+Linux builds (an AppImage and a `.deb`) are attached to each release too. Windows is the supported platform, so the Linux builds are best effort: installing Unity Hub from the app is Windows only there.
 
 Unity is not bundled. Install Unity Hub and the Unity version your projects use (2022.3.22f1 for current VRChat projects). The app finds editors that Unity Hub installed. The Unity page can also install the recommended editors (2022.3.22f1 and 2019.4.31f1, with optional Android and iOS support) through Unity Hub, and on Windows it can download and install Unity Hub itself after you confirm. The installer is checked against Unity's published checksum and signature before it runs, and Windows asks for permission first. While an install runs, projects cannot be opened or changed. Editor downloads can be limited to a chosen speed (Settings or the install dialog); Unity Hub does the downloading, so the app routes it through a small local proxy that only forwards to Unity's own hosts.
 
@@ -51,6 +53,14 @@ npm run tauri build -- --bundles nsis,msi
 The installers appear under `src-tauri/target/release/bundle`. On Windows with Git Bash, `./build.sh` runs the same build and gathers the files, plus a portable executable and checksums, in `release/windows`. On Linux it can cross-compile the NSIS installer with `cargo-xwin`, `makensis` and `clang`.
 
 For development on Linux or macOS, `./test-build.sh` starts the app with hot reload.
+
+## Releasing (maintainers)
+
+```
+python scripts/release.py 1.0.1 "Optional description for the release notes"
+```
+
+The script checks that your work is committed and up to date, bumps the version everywhere, adds the changelog entry, commits, tags `v1.0.1` and pushes. Add `--dry-run` to see the notes and the plan first. GitHub Actions then builds the Windows and Linux files and publishes the release, with your description and one line per commit since the last release as its notes. The app's update check picks the release up once it is published. The script's own checks run with `cd scripts && python -m unittest test_release`.
 
 ## Tests
 
