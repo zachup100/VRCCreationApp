@@ -31,7 +31,7 @@ Unity is not bundled. Install Unity Hub and the Unity version your projects use 
 Everything is stored in `%APPDATA%\net.zachlabs.vrccreationapp.main`:
 
 - `projects.json`, `presets.json` and `preferences.json` for your lists and settings.
-- `vpm\` for repository settings and the package cache.
+- `vpm\` for repository settings and the package cache. Authentication headers you give a repository are saved here in plain text, the same way the Creator Companion stores them, so keep this folder private. The Logs page hides the query string and any credentials in repository addresses.
 - `Backups\` for project backups, unless you pick another folder in Settings.
 
 The app keeps its own data and never writes to the Creator Companion's files. The import buttons only read from them.

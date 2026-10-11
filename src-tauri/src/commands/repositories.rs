@@ -115,6 +115,26 @@ fn parse_http_url(url: &str) -> Option<reqwest::Url> {
     }
 }
 
+fn redact_url(url: &reqwest::Url) -> String {
+    let mut clean = url.clone();
+    let _ = clean.set_username("");
+    let _ = clean.set_password(None);
+    clean.set_query(None);
+    clean.set_fragment(None);
+    clean.to_string()
+}
+
+fn redact_text(text: &str) -> String {
+    match text.parse::<reqwest::Url>() {
+        Ok(url) if url.has_host() => redact_url(&url),
+        _ => text.to_string(),
+    }
+}
+
+fn redact_in(message: &str, url: &reqwest::Url) -> String {
+    message.replace(url.as_str(), &redact_url(url))
+}
+
 fn repo_key(repo: &vrc_get_vpm::UserRepoSetting) -> Option<String> {
     repo.id()
         .or(repo.url().map(|url| url.as_str()))
@@ -329,7 +349,7 @@ pub async fn repository_add(
 ) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
     ensure_allowed(&parsed, vpm.private_hosts_blocked()).await?;
-    let parsed_label = parsed.to_string();
+    let parsed_label = redact_url(&parsed);
     let _busy = vpm.try_busy()?;
     let _guard = vpm.lock.lock().await;
     let mut settings = Settings::load(&vpm.io)
@@ -390,7 +410,7 @@ pub async fn repository_update(
 ) -> Result<(), String> {
     let parsed = parse_http_url(&url).ok_or_else(|| "The URL is not valid".to_string())?;
     ensure_allowed(&parsed, vpm.private_hosts_blocked()).await?;
-    let parsed_label = parsed.to_string();
+    let parsed_label = redact_url(&parsed);
     let header_values = header_map(&headers)?;
     let _busy = vpm.try_busy()?;
     let new_id = {
@@ -464,7 +484,7 @@ pub async fn repository_remove(
             .map_err(|error| format!("Could not save repository settings: {error}"))?;
     }
     vpm.invalidate().await;
-    log(&app, "info", format!("Removed repository {expected_id}"));
+    log(&app, "info", format!("Removed repository {}", redact_text(&expected_id)));
     let mut prefs = lock_prefs(&prefs)?;
     prefs.set_hidden(&expected_id, false);
     prefs.save().map_err(|error| error.to_string())
@@ -562,13 +582,14 @@ pub async fn import_packages_from_vcc(
         let label = candidate
             .name
             .clone()
-            .or_else(|| candidate.url.as_ref().map(|url| url.to_string()))
+            .or_else(|| candidate.url.as_ref().map(redact_url))
             .unwrap_or_else(|| candidate.path.display().to_string());
         match candidate.url {
             Some(url) => {
                 if let Err(message) = ensure_allowed(&url, vpm.private_hosts_blocked()).await {
                     result.failures.push(format!("{label}: {message}"));
                 } else {
+                    let source = url.clone();
                     let outcome = add_remote_repo(
                         &mut settings,
                         url,
@@ -581,7 +602,9 @@ pub async fn import_packages_from_vcc(
                     match outcome {
                         Ok(()) => result.repositories_added += 1,
                         Err(AddRepositoryErr::AlreadyAdded) => result.repositories_skipped += 1,
-                        Err(error) => result.failures.push(format!("{label}: {error}")),
+                        Err(error) => result
+                            .failures
+                            .push(redact_in(&format!("{label}: {error}"), &source)),
                     }
                 }
             }
@@ -671,6 +694,21 @@ mod tests {
         assert!(parse_http_url("file:///etc/passwd").is_none());
         assert!(parse_http_url("not a url").is_none());
         assert!(parse_http_url("").is_none());
+    }
+
+    #[test]
+    fn logged_urls_lose_credentials_query_and_fragment() {
+        let url: reqwest::Url = "https://user:pw@example.com:8443/vpm/index.json?token=abc&x=1#frag".parse().unwrap();
+        assert_eq!(redact_url(&url), "https://example.com:8443/vpm/index.json");
+        assert_eq!(redact_text("https://example.com/a?key=secret"), "https://example.com/a");
+        assert_eq!(redact_text("com.example.repo"), "com.example.repo");
+    }
+
+    #[test]
+    fn error_text_has_the_secret_url_replaced() {
+        let url: reqwest::Url = "https://example.com/a?token=abc".parse().unwrap();
+        let message = format!("error sending request for url ({url})");
+        assert_eq!(redact_in(&message, &url), "error sending request for url (https://example.com/a)");
     }
 
     #[test]
