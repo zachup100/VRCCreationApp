@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0 (unreleased)
+## 1.0.0
 
 First release. Windows 10 and 11 only.
 
