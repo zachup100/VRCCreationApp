@@ -19,6 +19,7 @@ use zip::ZipArchive;
 const STAMP_FORMAT: &str = "%Y-%m-%d_%H-%M-%S";
 const STAMP_LENGTH: usize = 19;
 const MAX_BACKUP_ENTRIES: usize = 1_000_000;
+const STAGING_MARKER: &str = ".vrccreation-restoring";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -204,6 +205,33 @@ fn backup_root(archive: &mut ZipArchive<BufReader<File>>) -> Result<String, Stri
     root.ok_or_else(|| "The backup is empty".to_string())
 }
 
+fn prepare_staging(staging: &Path) -> Result<(), String> {
+    if staging.symlink_metadata().is_ok() {
+        let ours = staging
+            .symlink_metadata()
+            .map(|metadata| metadata.is_dir() && !metadata.file_type().is_symlink())
+            .unwrap_or(false)
+            && staging.join(STAGING_MARKER).is_file();
+        if !ours {
+            return Err(format!(
+                "A folder named {} already exists and was not made by this app. Rename or remove it, then try again.",
+                staging.file_name().unwrap_or_default().to_string_lossy()
+            ));
+        }
+        std::fs::remove_dir_all(staging).map_err(|error| format!("Could not clear an unfinished restore: {error}"))?;
+    }
+    std::fs::create_dir(staging).map_err(|error| format!("Could not create the project folder: {error}"))?;
+    if let Err(error) = std::fs::write(staging.join(STAGING_MARKER), b"") {
+        let _ = std::fs::remove_dir_all(staging);
+        return Err(format!("Could not create the project folder: {error}"));
+    }
+    Ok(())
+}
+
+fn finish_staging(staging: &Path) -> Result<(), String> {
+    std::fs::remove_file(staging.join(STAGING_MARKER)).map_err(|error| format!("Could not finish the restore: {error}"))
+}
+
 fn describe_size(bytes: u64) -> String {
     const GIB: f64 = 1024.0 * 1024.0 * 1024.0;
     const MIB: f64 = 1024.0 * 1024.0;
@@ -270,7 +298,7 @@ fn extract_backup(
         let Ok(relative) = path.strip_prefix(&root) else {
             continue;
         };
-        if relative.as_os_str().is_empty() {
+        if relative.as_os_str().is_empty() || relative == Path::new(STAGING_MARKER) {
             continue;
         }
         let destination = target.join(relative);
@@ -333,14 +361,12 @@ pub async fn restore_backup(
         return Ok(RestoreOutcome::Conflict { name: project_name });
     }
     let staging = parent.join(format!(".{project_name}.restoring"));
-    if staging.symlink_metadata().is_ok() {
-        tokio::fs::remove_dir_all(&staging)
+    {
+        let staging = staging.clone();
+        tokio::task::spawn_blocking(move || prepare_staging(&staging))
             .await
-            .map_err(|error| format!("Could not clear an unfinished restore: {error}"))?;
+            .map_err(|_| "The restore was interrupted".to_string())??;
     }
-    tokio::fs::create_dir(&staging)
-        .await
-        .map_err(|error| format!("Could not create the project folder: {error}"))?;
 
     let extraction = {
         let handle = app.clone();
@@ -355,6 +381,10 @@ pub async fn restore_backup(
             .and_then(|result| result)
     };
     if let Err(message) = extraction {
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+        return Err(message);
+    }
+    if let Err(message) = finish_staging(&staging) {
         let _ = tokio::fs::remove_dir_all(&staging).await;
         return Err(message);
     }
@@ -437,6 +467,60 @@ mod tests {
             writer.set_comment(comment);
         }
         writer.finish().unwrap();
+    }
+
+    #[test]
+    fn a_new_staging_folder_is_created_with_the_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join(".Proj.restoring");
+        prepare_staging(&staging).unwrap();
+        assert!(staging.join(STAGING_MARKER).is_file());
+        finish_staging(&staging).unwrap();
+        assert!(!staging.join(STAGING_MARKER).exists());
+    }
+
+    #[test]
+    fn a_leftover_staging_folder_with_the_marker_is_cleared() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join(".Proj.restoring");
+        prepare_staging(&staging).unwrap();
+        std::fs::write(staging.join("half.txt"), "x").unwrap();
+        prepare_staging(&staging).unwrap();
+        assert!(!staging.join("half.txt").exists());
+        assert!(staging.join(STAGING_MARKER).is_file());
+    }
+
+    #[test]
+    fn a_folder_without_the_marker_is_never_touched() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join(".Proj.restoring");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("mine.txt"), "keep").unwrap();
+        let message = prepare_staging(&staging).unwrap_err();
+        assert!(message.contains("not made by this app"));
+        assert_eq!(std::fs::read_to_string(staging.join("mine.txt")).unwrap(), "keep");
+    }
+
+    #[test]
+    fn a_file_with_the_staging_name_is_never_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join(".Proj.restoring");
+        std::fs::write(&staging, "keep").unwrap();
+        assert!(prepare_staging(&staging).is_err());
+        assert_eq!(std::fs::read_to_string(&staging).unwrap(), "keep");
+    }
+
+    #[test]
+    fn a_backup_entry_named_like_the_marker_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("b.zip");
+        plain_zip(&zip_path, &[("Proj/a.txt", "a"), (&format!("Proj/{STAGING_MARKER}"), "fake")], None);
+        let target = dir.path().join("out");
+        std::fs::create_dir_all(&target).unwrap();
+        let mut report = |_: usize, _: usize| {};
+        extract_backup(&zip_path, &target, &mut report).unwrap();
+        assert!(target.join("a.txt").is_file());
+        assert!(!target.join(STAGING_MARKER).exists());
     }
 
     #[test]
