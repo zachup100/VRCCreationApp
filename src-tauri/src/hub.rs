@@ -2,6 +2,7 @@ use crate::applog::log;
 use crate::editors;
 use crate::limits::check_host;
 use crate::prefs::Prefs;
+use crate::throttle::{limit_allowed, Config, Throttle, BYTES_PER_MEGABYTE};
 use crate::vpm::VpmContext;
 use base64::Engine;
 use reqwest::Url;
@@ -488,8 +489,40 @@ async fn editor_install(session: &Session, android: bool, ios: bool) -> Result<(
     );
     session.emit("installing", 0, 0, "Starting Unity Hub");
 
+    let limit = {
+        let prefs = session.app.state::<Mutex<Prefs>>();
+        let value = prefs
+            .lock()
+            .map(|guard| guard.settings().unity_download_limit)
+            .unwrap_or(0);
+        if limit_allowed(value) {
+            value
+        } else {
+            0
+        }
+    };
+    let throttle = if limit > 0 {
+        let blocked = session.app.state::<VpmContext>().private_hosts_blocked();
+        let config = Config::unity(limit as u64 * BYTES_PER_MEGABYTE, blocked);
+        Some(
+            Throttle::start(config)
+                .await
+                .map_err(|error| format!("Could not start the download speed limiter: {error}"))?,
+        )
+    } else {
+        None
+    };
+
     let mut command = Command::new(&hub);
     command.args(launch_flags()).args(editor_args(entry, android, ios));
+    if let Some(proxy) = &throttle {
+        for name in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"] {
+            command.env(name, proxy.url());
+        }
+        for name in ["NO_PROXY", "no_proxy"] {
+            command.env(name, "");
+        }
+    }
     hide_window(&mut command);
 
     let cancel = session.cancel.clone();

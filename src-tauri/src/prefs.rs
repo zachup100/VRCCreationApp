@@ -16,6 +16,8 @@ pub struct AppSettings {
     pub show_prerelease: bool,
     #[serde(default)]
     pub default_unity_args: String,
+    #[serde(default)]
+    pub unity_download_limit: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

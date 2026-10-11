@@ -14,11 +14,12 @@ import { useActions } from "../actions";
 import { Button, IconButton } from "../components/Button";
 import { Checkbox, ConfirmModal, EmptyState, Modal } from "../components/Controls";
 import { Icon } from "../components/Icons";
+import { SpeedLimit } from "../components/SpeedLimit";
 import { UnityInstallStatus } from "../components/UnityInstallStatus";
 import { errorMessage } from "../format";
 
 export function UnityPage() {
-	const { editors, editorsLoading, editorsError, refreshEditors, projects, notify, unityInstall } = useApp();
+	const { editors, editorsLoading, editorsError, refreshEditors, projects, notify, unityInstall, settings, updateSettings } = useApp();
 	const actions = useActions();
 	const [hub, setHub] = useState<HubStatus | null>(null);
 	const [recommended, setRecommended] = useState<RecommendedEditor[]>([]);
@@ -27,6 +28,7 @@ export function UnityPage() {
 	const [installTarget, setInstallTarget] = useState<RecommendedEditor | null>(null);
 	const [withAndroid, setWithAndroid] = useState(false);
 	const [withIos, setWithIos] = useState(false);
+	const [speedLimit, setSpeedLimit] = useState(0);
 	const [hubPrompt, setHubPrompt] = useState(false);
 	const idle = unityInstall === null;
 
@@ -88,7 +90,10 @@ export function UnityPage() {
 		}
 	};
 
-	const startEditorInstall = async (target: RecommendedEditor, android: boolean, ios: boolean) => {
+	const startEditorInstall = async (target: RecommendedEditor, android: boolean, ios: boolean, limit: number) => {
+		if (limit !== settings.unityDownloadLimit && !(await updateSettings({ unityDownloadLimit: limit }))) {
+			return;
+		}
 		try {
 			await installUnityEditor(target.version, android, ios);
 		} catch (error) {
@@ -170,6 +175,7 @@ export function UnityPage() {
 											onClick={() => {
 												setWithAndroid(false);
 												setWithIos(false);
+												setSpeedLimit(settings.unityDownloadLimit);
 												setInstallTarget(entry);
 											}}
 										>
@@ -262,7 +268,7 @@ export function UnityPage() {
 								onClick={() => {
 									const target = installTarget;
 									setInstallTarget(null);
-									void startEditorInstall(target, withAndroid, withIos);
+									void startEditorInstall(target, withAndroid, withIos, speedLimit);
 								}}
 							>
 								Install
@@ -285,6 +291,10 @@ export function UnityPage() {
 							<span className="muted">For iPhone and iPad builds.</span>
 						</span>
 					</label>
+					<div className="speed-block">
+						<strong>Download speed limit</strong>
+						<SpeedLimit value={speedLimit} onChange={setSpeedLimit} />
+					</div>
 					<p className="modal-note muted">While the install runs, projects cannot be opened or changed. You can cancel it from this page, but a cancelled install may leave a partial editor behind.</p>
 				</Modal>
 			)}

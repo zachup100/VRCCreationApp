@@ -14,6 +14,7 @@ pub struct SettingsPatch {
     backup_location: Option<String>,
     show_prerelease: Option<bool>,
     default_unity_args: Option<String>,
+    unity_download_limit: Option<u32>,
 }
 
 fn system_root() -> String {
@@ -77,6 +78,11 @@ pub fn update_settings(
     if let Some(args) = patch.default_unity_args.as_deref() {
         split_args(args)?;
     }
+    if let Some(limit) = patch.unity_download_limit {
+        if !crate::throttle::limit_allowed(limit) {
+            return Err("That download speed limit is not one of the choices.".to_string());
+        }
+    }
 
     let mut prefs = prefs
         .lock()
@@ -93,6 +99,9 @@ pub fn update_settings(
     }
     if let Some(value) = patch.default_unity_args {
         settings.default_unity_args = value.trim().to_string();
+    }
+    if let Some(value) = patch.unity_download_limit {
+        settings.unity_download_limit = value;
     }
     let result = prefs.settings().clone();
     prefs.save().map_err(|error| error.to_string())?;

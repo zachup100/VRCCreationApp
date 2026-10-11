@@ -110,6 +110,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		backupLocation: null,
 		showPrerelease: false,
 		defaultUnityArgs: "",
+		unityDownloadLimit: 0,
 	});
 	const [unityInstall, setUnityInstall] = useState<UnityInstall | null>(null);
 	const [packageOperation, setPackageOperation] = useState(false);

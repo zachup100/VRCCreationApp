@@ -321,6 +321,7 @@ export interface AppSettings {
 	backupLocation: string | null;
 	showPrerelease: boolean;
 	defaultUnityArgs: string;
+	unityDownloadLimit: number;
 }
 
 export interface SettingsPatch {
@@ -328,6 +329,7 @@ export interface SettingsPatch {
 	backupLocation?: string;
 	showPrerelease?: boolean;
 	defaultUnityArgs?: string;
+	unityDownloadLimit?: number;
 }
 
 export function getSettings(): Promise<AppSettings> {

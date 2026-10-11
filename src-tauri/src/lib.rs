@@ -12,6 +12,7 @@ mod prefs;
 mod presets;
 mod prereq;
 mod store;
+mod throttle;
 mod vpm;
 
 use std::sync::Mutex;

@@ -2,6 +2,7 @@ import { useApp } from "../AppContext";
 import { cancelUnityInstall } from "../api";
 import type { UnityInstall } from "../api";
 import { errorMessage, formatBytes } from "../format";
+import { limitLabel } from "./SpeedLimit";
 import { Button } from "./Button";
 
 function title(install: UnityInstall): string {
@@ -41,7 +42,7 @@ function cancellable(install: UnityInstall): boolean {
 }
 
 export function UnityInstallStatus({ install }: { install: UnityInstall }) {
-	const { notify } = useApp();
+	const { notify, settings } = useApp();
 	const determinate = install.total > 0 && (install.kind === "editor" || install.phase === "downloading");
 	const percent = determinate ? Math.min(100, Math.round((install.bytes / install.total) * 100)) : null;
 	const heading = title(install);
@@ -75,6 +76,9 @@ export function UnityInstallStatus({ install }: { install: UnityInstall }) {
 				<div className="progress-fill" style={percent === null ? undefined : { width: `${percent}%` }} />
 			</div>
 			<span className="muted install-detail">{detail(install, percent)}</span>
+			{install.kind === "editor" && settings.unityDownloadLimit > 0 && (
+				<span className="muted install-detail">Download speed limit: {limitLabel(settings.unityDownloadLimit)}</span>
+			)}
 		</div>
 	);
 }

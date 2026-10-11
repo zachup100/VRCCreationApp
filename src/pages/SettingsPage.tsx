@@ -16,6 +16,7 @@ import { Button, IconButton } from "../components/Button";
 import { ConfirmModal, Select, Switch, Tabs } from "../components/Controls";
 import { ImportPackagesButton } from "../components/ImportPackagesButton";
 import { LicensesModal } from "../components/LicensesModal";
+import { SpeedLimit } from "../components/SpeedLimit";
 import type { Tab } from "../components/Controls";
 import { Icon } from "../components/Icons";
 import type { IconName } from "../components/Icons";
@@ -100,6 +101,28 @@ function FolderSetting({
 	);
 }
 
+function DownloadLimitRow() {
+	const { settings, updateSettings, unityInstall } = useApp();
+	const [limit, setLimit] = useState(settings.unityDownloadLimit);
+	useEffect(() => setLimit(settings.unityDownloadLimit), [settings.unityDownloadLimit]);
+	useEffect(() => {
+		if (limit === settings.unityDownloadLimit) {
+			return;
+		}
+		const timer = window.setTimeout(() => void updateSettings({ unityDownloadLimit: limit }), 400);
+		return () => window.clearTimeout(timer);
+	}, [limit, settings.unityDownloadLimit, updateSettings]);
+	return (
+		<SettingRow
+			icon="download"
+			title="Unity Download Speed Limit"
+			description="Caps how fast Unity Hub downloads the editors you install from the Unity page, so it does not use your whole connection. It is not applied to the Unity Hub installer."
+		>
+			<SpeedLimit value={limit} onChange={setLimit} disabled={unityInstall !== null} />
+		</SettingRow>
+	);
+}
+
 function ProjectSettings() {
 	const { settings, updateSettings } = useApp();
 	const [args, setArgs] = useState(settings.defaultUnityArgs);
@@ -146,6 +169,7 @@ function ProjectSettings() {
 						</Button>
 					</form>
 				</SettingRow>
+				<DownloadLimitRow />
 			</div>
 		</section>
 	);
