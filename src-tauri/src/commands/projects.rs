@@ -154,7 +154,11 @@ pub fn remove_project(
     Ok(())
 }
 
-fn ensure_deletable(path: &Path) -> Result<(), String> {
+fn resolved(path: &str) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| PathBuf::from(path))
+}
+
+fn ensure_deletable(path: &Path, others: &[PathBuf], home: Option<&Path>) -> Result<(), String> {
     let metadata = std::fs::symlink_metadata(path)
         .map_err(|_| "The project folder no longer exists".to_string())?;
     if metadata.file_type().is_symlink() {
@@ -166,10 +170,33 @@ fn ensure_deletable(path: &Path) -> Result<(), String> {
     if path.parent().is_none() {
         return Err("This folder cannot be deleted".to_string());
     }
-    if !path.join("Assets").is_dir() || !path.join("ProjectSettings").is_dir() {
+    if !path.join("Assets").is_dir()
+        || !path.join("ProjectSettings").is_dir()
+        || !path.join("ProjectSettings").join("ProjectVersion.txt").is_file()
+    {
         return Err("This folder does not look like a Unity project, so it was not deleted".to_string());
     }
+    if home.is_some_and(|home| home.starts_with(path)) {
+        return Err("This folder holds your home folder, so it will not be deleted".to_string());
+    }
+    if others.iter().any(|other| other != path && other.starts_with(path)) {
+        return Err("This folder contains other projects from your list, so it will not be deleted".to_string());
+    }
     Ok(())
+}
+
+fn prepare_deletion(path: &str, others: &[PathBuf]) -> Result<PathBuf, String> {
+    let original = Path::new(path);
+    let metadata = std::fs::symlink_metadata(original)
+        .map_err(|_| "The project folder no longer exists".to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("This project folder is a link, so it will not be deleted from here".to_string());
+    }
+    let target = std::fs::canonicalize(original)
+        .map_err(|_| "The project folder no longer exists".to_string())?;
+    let home = std::env::home_dir().map(|home| resolved(&home.to_string_lossy()));
+    ensure_deletable(&target, others, home.as_deref())?;
+    Ok(target)
 }
 
 #[tauri::command]
@@ -180,19 +207,26 @@ pub async fn delete_project(
     state: State<'_, Mutex<ProjectStore>>,
 ) -> Result<(), String> {
     let _busy = vpm.try_busy()?;
-    {
+    let others: Vec<PathBuf> = {
         let store = lock(&state)?;
         if store.find(&path).is_none() {
             return Err("This project is not in the list".to_string());
         }
-    }
-    let folder = PathBuf::from(&path);
-    ensure_deletable(&folder)?;
-    let target = folder.clone();
-    tokio::task::spawn_blocking(move || std::fs::remove_dir_all(target))
-        .await
-        .map_err(|_| "Deleting the project was interrupted".to_string())?
-        .map_err(|error| format!("Could not delete the project: {error}"))?;
+        let own = path_key(&path);
+        store
+            .projects()
+            .iter()
+            .filter(|project| path_key(&project.path) != own)
+            .map(|project| resolved(&project.path))
+            .collect()
+    };
+    let folder = path.clone();
+    tokio::task::spawn_blocking(move || {
+        let target = prepare_deletion(&folder, &others)?;
+        std::fs::remove_dir_all(target).map_err(|error| format!("Could not delete the project: {error}"))
+    })
+    .await
+    .map_err(|_| "Deleting the project was interrupted".to_string())??;
     log(&app, "info", format!("Deleted project {}", project_label(&path)));
     let mut store = lock(&state)?;
     store.remove(&path);
@@ -444,23 +478,80 @@ mod tests {
         assert!(!is_importable_path(""));
     }
 
+    fn make_project(root: &Path) {
+        std::fs::create_dir_all(root.join("Assets")).unwrap();
+        std::fs::create_dir_all(root.join("ProjectSettings")).unwrap();
+        std::fs::write(root.join("ProjectSettings").join("ProjectVersion.txt"), "m_EditorVersion: 2022.3.22f1").unwrap();
+    }
+
     #[test]
     fn only_real_unity_project_folders_can_be_deleted() {
         let dir = tempfile::tempdir().unwrap();
         let project = dir.path().join("Proj");
-        std::fs::create_dir_all(project.join("Assets")).unwrap();
-        std::fs::create_dir_all(project.join("ProjectSettings")).unwrap();
-        assert!(ensure_deletable(&project).is_ok());
+        make_project(&project);
+        assert!(ensure_deletable(&project, &[], None).is_ok());
 
         let plain = dir.path().join("Docs");
         std::fs::create_dir_all(plain.join("Assets")).unwrap();
-        assert!(ensure_deletable(&plain).is_err());
-        assert!(ensure_deletable(&dir.path().join("missing")).is_err());
+        assert!(ensure_deletable(&plain, &[], None).is_err());
+        assert!(ensure_deletable(&dir.path().join("missing"), &[], None).is_err());
 
         let file = dir.path().join("file.txt");
         std::fs::write(&file, "x").unwrap();
-        assert!(ensure_deletable(&file).is_err());
-        assert!(ensure_deletable(Path::new("/")).is_err());
+        assert!(ensure_deletable(&file, &[], None).is_err());
+        assert!(ensure_deletable(Path::new("/"), &[], None).is_err());
+    }
+
+    #[test]
+    fn a_project_folder_needs_a_project_version_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("Proj");
+        std::fs::create_dir_all(project.join("Assets")).unwrap();
+        std::fs::create_dir_all(project.join("ProjectSettings")).unwrap();
+        assert!(ensure_deletable(&project, &[], None).is_err());
+        std::fs::write(project.join("ProjectSettings").join("ProjectVersion.txt"), "x").unwrap();
+        assert!(ensure_deletable(&project, &[], None).is_ok());
+    }
+
+    #[test]
+    fn a_folder_holding_other_listed_projects_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let outer = dir.path().join("MyProjects");
+        let inner = outer.join("Test");
+        let sibling = dir.path().join("Other");
+        make_project(&outer);
+        make_project(&inner);
+        make_project(&sibling);
+        assert!(ensure_deletable(&outer, &[inner.clone()], None).is_err());
+        assert!(ensure_deletable(&inner, &[outer.clone()], None).is_ok());
+        assert!(ensure_deletable(&outer, &[sibling], None).is_ok());
+    }
+
+    #[test]
+    fn the_home_folder_and_its_parents_are_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().join("home");
+        make_project(dir.path());
+        make_project(&home);
+        assert!(ensure_deletable(&home, &[], Some(&home)).is_err());
+        assert!(ensure_deletable(dir.path(), &[], Some(&home)).is_err());
+        let project = home.join("Proj");
+        make_project(&project);
+        assert!(ensure_deletable(&project, &[], Some(&home)).is_ok());
+    }
+
+    #[test]
+    fn deleting_through_a_link_is_refused() {
+        #[cfg(unix)]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let real = dir.path().join("Real");
+            make_project(&real);
+            let link = dir.path().join("Link");
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            assert!(prepare_deletion(link.to_str().unwrap(), &[]).is_err());
+            assert!(prepare_deletion(real.to_str().unwrap(), &[]).is_ok());
+        }
     }
 
     #[test]
